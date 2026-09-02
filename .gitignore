@@ -1,2 +1,4 @@
 locale/
 toprates@hellish.github.io.shell-extension.zip
+node_modules/
+dist/

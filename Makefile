@@ -7,6 +7,8 @@
 #   make enable     # enable the extension in the current session
 #   make run        # install, then launch a nested GNOME Shell to test in
 #   make pack       # build a distributable shell-extension.zip
+#   make test       # run the validation suite
+#   make lint       # run ESLint over the GJS sources
 #   make uninstall  # remove the installed copy
 
 UUID    := toprates@hellish.github.io
@@ -29,7 +31,7 @@ POFILES := $(wildcard po/*.po)
 MOFILES := $(patsubst po/%.po,locale/%/LC_MESSAGES/$(DOMAIN).mo,$(POFILES))
 
 .PHONY: all schemas translations pot update-po install uninstall reinstall \
-        enable disable prefs pack run logs clean
+        enable disable prefs pack test lint run logs clean
 
 all: schemas translations
 
@@ -86,13 +88,17 @@ prefs:
 	gnome-extensions prefs $(UUID)
 
 ## Distributable zip for extensions.gnome.org / 'gnome-extensions install'.
+## tools/pack.sh is what CI runs too, so both produce an identical archive.
 pack: $(SOURCES) $(SCHEMA)
-	gnome-extensions pack --force \
-	    --extra-source=stylesheet.css \
-	    --extra-source=icons \
-	    --podir=po \
-	    --schema=$(SCHEMA)
-	@echo "Built $(ZIP)"
+	./tools/pack.sh
+
+## The checks CI runs: metadata, schema, translations and zip layout.
+test:
+	./tests/run-tests.sh
+
+## Static analysis of the GJS sources; needs 'npm install' first.
+lint:
+	npx eslint .
 
 ## Install, then run a nested GNOME Shell so changes can be tested without
 ## logging out. GNOME >= 50 uses --devkit; older versions used --nested.

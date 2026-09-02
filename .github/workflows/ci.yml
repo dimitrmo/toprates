@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run obsolete, except on
+# tags, where the run produces a release artifact and must finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # package-lock.json is committed, so the linter version is pinned and the
+      # install is restored from cache on most runs.
+      - name: Install lint dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npx eslint .
+
+  test:
+    name: Validate sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GNOME build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip
+
+      - name: Run test suite
+        run: ./tests/run-tests.sh
+
+  pack:
+    name: Pack extension zip
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GNOME build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip
+
+      - name: Read extension metadata
+        id: meta
+        run: |
+          {
+            echo "uuid=$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])')"
+            echo "version=$(python3 -c 'import json;print(json.load(open("metadata.json")).get("version-name",""))')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build zip
+        run: ./tools/pack.sh --output "dist/${{ steps.meta.outputs.uuid }}.shell-extension.zip"
+
+      # Unpacking here would defeat the purpose: the artifact must stay a single
+      # zip that can be uploaded to extensions.gnome.org as-is, so the whole
+      # dist/ directory is uploaded with compression disabled.
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.uuid }}-${{ steps.meta.outputs.version }}
+          path: dist/*.shell-extension.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: Attach zip to release
+    runs-on: ubuntu-latest
+    needs: [pack]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      # The pack job uploads exactly one artifact; merge-multiple flattens it
+      # into dist/ instead of nesting it under the artifact name.
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Locate the built zip
+        run: ls -l dist
+
+      - name: Create or update the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.shell-extension.zip
+          generate_release_notes: true
+          body: |
+            Upload `*.shell-extension.zip` to
+            https://extensions.gnome.org/upload/ to publish this version.

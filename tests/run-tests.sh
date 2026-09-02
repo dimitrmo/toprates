@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# Validation suite for the extension sources.
+#
+# These are the checks that catch a broken submission before it reaches
+# extensions.gnome.org: the metadata the shell parses, the GSettings schema it
+# binds to, the translations it loads, and the shape of the packed zip.
+#
+#   ./tests/run-tests.sh
+#
+# Requires: python3, glib-compile-schemas, msgfmt, zip, unzip.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+PASS=0
+FAIL=0
+
+# ANSI colour only when writing to a terminal; CI logs stay clean.
+if [ -t 1 ]; then
+    GREEN=$'\033[32m'; RED=$'\033[31m'; DIM=$'\033[2m'; RESET=$'\033[0m'
+else
+    GREEN=''; RED=''; DIM=''; RESET=''
+fi
+
+ok()   { PASS=$((PASS + 1)); printf '%s  ok%s %s\n' "$GREEN" "$RESET" "$1"; }
+fail() { FAIL=$((FAIL + 1)); printf '%snot ok%s %s\n' "$RED" "$RESET" "$1"; [ $# -gt 1 ] && printf '%s       %s%s\n' "$DIM" "$2" "$RESET"; }
+
+# check <name> <command...> — passes when the command exits 0, and shows the
+# command's own output as the failure detail.
+check() {
+    local name="$1"; shift
+    local out
+    if out="$("$@" 2>&1)"; then
+        ok "$name"
+    else
+        fail "$name" "${out:-command failed: $*}"
+    fi
+}
+
+section() { printf '\n%s# %s%s\n' "$DIM" "$1" "$RESET"; }
+
+# Values the rest of the suite cross-checks against each other.
+UUID="$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])' 2>/dev/null || echo '')"
+SCHEMA_FILE="schemas/org.gnome.shell.extensions.toprates.gschema.xml"
+
+section 'metadata.json'
+
+check 'metadata.json is valid JSON' \
+    python3 -c 'import json; json.load(open("metadata.json"))'
+
+check 'metadata.json declares every key the shell requires' \
+    python3 -c '
+import json, sys
+m = json.load(open("metadata.json"))
+required = ["uuid", "name", "description", "shell-version"]
+missing = [k for k in required if not m.get(k)]
+if missing:
+    sys.exit("missing or empty: " + ", ".join(missing))
+'
+
+check 'uuid is a well-formed extension uuid' \
+    python3 -c '
+import json, re, sys
+uuid = json.load(open("metadata.json"))["uuid"]
+if not re.fullmatch(r"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+", uuid):
+    sys.exit(f"{uuid!r} is not of the form name@domain")
+'
+
+check 'shell-version lists supported releases only' \
+    python3 -c '
+import json, sys
+versions = json.load(open("metadata.json"))["shell-version"]
+if not isinstance(versions, list) or not versions:
+    sys.exit("shell-version must be a non-empty array")
+bad = [v for v in versions if not isinstance(v, str) or not v.split(".")[0].isdigit()]
+if bad:
+    sys.exit(f"not version strings: {bad}")
+# GNOME 45 was the ESM cut-over; these sources cannot load on anything older.
+old = [v for v in versions if int(v.split(".")[0]) < 45]
+if old:
+    sys.exit(f"ESM sources cannot run on GNOME {old}")
+'
+
+check 'version-name is set for the extensions.gnome.org listing' \
+    python3 -c '
+import json, sys
+if not json.load(open("metadata.json")).get("version-name"):
+    sys.exit("version-name is missing")
+'
+
+check 'uuid matches the UUID the Makefile packs under' \
+    python3 -c '
+import json, re, sys
+uuid = json.load(open("metadata.json"))["uuid"]
+mk = re.search(r"^UUID\s*:?=\s*(\S+)", open("Makefile").read(), re.M)
+if not mk:
+    sys.exit("Makefile does not define UUID")
+if mk.group(1) != uuid:
+    sys.exit(f"Makefile UUID {mk.group(1)!r} != metadata uuid {uuid!r}")
+'
+
+section 'GSettings schema'
+
+check 'schema file is present' test -f "$SCHEMA_FILE"
+
+check 'schema compiles in strict mode' \
+    glib-compile-schemas --strict --dry-run schemas
+
+check 'settings-schema matches the id declared in the schema' \
+    python3 -c '
+import json, sys, xml.etree.ElementTree as ET
+declared = json.load(open("metadata.json")).get("settings-schema")
+ids = [s.get("id") for s in ET.parse(sys.argv[1]).getroot().findall("schema")]
+if declared and declared not in ids:
+    sys.exit(f"metadata settings-schema {declared!r} not among {ids}")
+if not declared and ids:
+    sys.exit("schema exists but metadata.json has no settings-schema")
+' "$SCHEMA_FILE"
+
+check 'every schema key has a summary' \
+    python3 -c '
+import sys, xml.etree.ElementTree as ET
+missing = [k.get("name") for s in ET.parse(sys.argv[1]).getroot().findall("schema")
+           for k in s.findall("key") if k.find("summary") is None]
+if missing:
+    sys.exit("keys without <summary>: " + ", ".join(missing))
+' "$SCHEMA_FILE"
+
+section 'translations'
+
+check 'gettext-domain agrees with the schema and the po template' \
+    python3 -c '
+import json, sys, xml.etree.ElementTree as ET
+domain = json.load(open("metadata.json")).get("gettext-domain")
+if not domain:
+    sys.exit("metadata.json has no gettext-domain")
+schema_domain = ET.parse(sys.argv[1]).getroot().get("gettext-domain")
+if schema_domain and schema_domain != domain:
+    sys.exit(f"schema gettext-domain {schema_domain!r} != {domain!r}")
+import os
+if not os.path.exists(f"po/{domain}.pot"):
+    sys.exit(f"po/{domain}.pot does not exist")
+' "$SCHEMA_FILE"
+
+for po in po/*.po; do
+    [ -e "$po" ] || break
+    check "$po compiles and passes format checks" msgfmt --check --output-file=/dev/null "$po"
+done
+
+check 'po template parses' msgfmt --check-format --output-file=/dev/null po/toprates.pot
+
+section 'sources'
+
+for src in extension.js prefs.js metadata.json stylesheet.css icons schemas; do
+    check "$src exists" test -e "$src"
+done
+
+check 'extension.js exports a default Extension subclass' \
+    grep -qE 'export default class .*extends Extension' extension.js
+
+check 'prefs.js exports a default ExtensionPreferences subclass' \
+    grep -qE 'export default class .*extends ExtensionPreferences' prefs.js
+
+section 'packaged zip'
+
+ZIP="$(mktemp -d)/$UUID.shell-extension.zip"
+if out="$(./tools/pack.sh --output "$ZIP" 2>&1)"; then
+    ok 'tools/pack.sh builds the zip'
+
+    check 'metadata.json sits at the root of the zip' \
+        bash -c 'unzip -l "$1" | grep -qE " metadata\.json$"' _ "$ZIP"
+
+    check 'extension.js sits at the root of the zip' \
+        bash -c 'unzip -l "$1" | grep -qE " extension\.js$"' _ "$ZIP"
+
+    check 'compiled translations are bundled' \
+        bash -c 'unzip -l "$1" | grep -qE "locale/.+/LC_MESSAGES/.+\.mo$"' _ "$ZIP"
+
+    check 'the schema xml is bundled' \
+        bash -c 'unzip -l "$1" | grep -qE "schemas/.+\.gschema\.xml$"' _ "$ZIP"
+
+    # -Z1 lists entry names only; the -l header repeats the archive path, which
+    # contains ".github.io" and would match a naive ".git" pattern.
+    check 'no build leftovers are bundled' \
+        bash -c '! unzip -Z1 "$1" | grep -qE "(^|/)(gschemas\.compiled|Makefile|README\.md|node_modules|\.git.*|.*\.po|.*\.pot)$"' _ "$ZIP"
+
+    check 'zip is within the extensions.gnome.org 5 MB upload limit' \
+        bash -c '[ "$(stat -c %s "$1")" -lt 5242880 ]' _ "$ZIP"
+else
+    fail 'tools/pack.sh builds the zip' "$out"
+fi
+rm -rf "$(dirname "$ZIP")"
+
+printf '\n%s%d passed%s' "$GREEN" "$PASS" "$RESET"
+if [ "$FAIL" -gt 0 ]; then
+    printf ', %s%d failed%s\n' "$RED" "$FAIL" "$RESET"
+    exit 1
+fi
+printf ', 0 failed\n'
