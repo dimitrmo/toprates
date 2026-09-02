@@ -12,6 +12,8 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
+Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async',
+    'replace_contents_finish');
 
 // Yahoo's chart endpoint needs no API key or cookie, unlike v7/finance/quote.
 const CHART_API = 'https://query1.finance.yahoo.com/v8/finance/chart/';
@@ -26,33 +28,133 @@ const HISTORY_INTERVALS = {
 };
 const DEFAULT_RANGE = '1mo';
 
+// Nothing moves while every followed exchange is shut, so the poll slows down
+// rather than waking the radio every few minutes all night.
+const CLOSED_REFRESH_INTERVAL = 1800;
+
+// A round that failed completely is retried sooner than the configured
+// interval, then backs off. Never slower than the interval itself.
+const RETRY_DELAYS = [30, 60, 120, 300];
+
+// Bumped when the on-disk shape changes, so an old cache is ignored.
+const CACHE_VERSION = 1;
+
+// St has no opacity property in CSS, and a hardcoded rgba() only suits one
+// theme, so muted text is faded on the actor and keeps the theme's colour.
+const MUTED_OPACITY = 155;
+const FAINT_OPACITY = 115;
+const STALE_OPACITY = 130;
+
 const GRAPH_COLORS = {
     up: [0.18, 0.76, 0.49],
     down: [0.88, 0.11, 0.14],
     flat: [0.60, 0.60, 0.62],
 };
 
-const CURRENCY_SYMBOLS = {
-    USD: '$', EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF ', CAD: 'CA$', AUD: 'A$',
-};
+// Intl knows every currency and the user's own grouping and decimal marks;
+// the formatters cost enough to build that they are worth keeping around.
+const NUMBER_FORMATS = new Map();
+
+// Some markets are quoted in minor units: London in pence, Johannesburg in
+// cents, Tel Aviv in agorot. Intl accepts these codes but renders them with
+// the major unit's symbol, turning 88.5 pence into "£88.50". They are shown
+// as a plain number plus the raw code instead.
+const MINOR_UNIT_CURRENCIES = new Set(['GBp', 'GBX', 'ZAc', 'ILA']);
+
+function numberFormat(currency, digits) {
+    const key = `${currency}/${digits}`;
+    if (!NUMBER_FORMATS.has(key)) {
+        const options = {minimumFractionDigits: digits, maximumFractionDigits: digits};
+        let format = null;
+        try {
+            format = new Intl.NumberFormat(undefined,
+                currency ? {...options, style: 'currency', currency} : options);
+        } catch {
+            // Yahoo reports a few codes Intl rejects, GBp for pence among
+            // them. Those fall back to a plain number plus the raw code.
+        }
+        NUMBER_FORMATS.set(key, format);
+    }
+    return NUMBER_FORMATS.get(key);
+}
+
+/** Sub-10 prices need more decimals: pennies and small crypto live there. */
+function priceDigits(price) {
+    return Math.abs(price) < 10 ? 4 : 2;
+}
+
+function signOf(value) {
+    return value > 0 ? '+' : value < 0 ? '−' : '';
+}
 
 function formatPrice(price, currency) {
     if (!Number.isFinite(price))
         return '—';
 
-    const digits = Math.abs(price) < 10 ? 4 : 2;
-    const value = price.toFixed(digits);
-    const prefix = CURRENCY_SYMBOLS[currency];
-    if (prefix)
-        return `${prefix}${value}`;
+    const digits = priceDigits(price);
+    const format = MINOR_UNIT_CURRENCIES.has(currency)
+        ? null : numberFormat(currency, digits);
+    if (format)
+        return format.format(price);
+
+    const value = numberFormat('', digits).format(price);
     return currency ? `${value} ${currency}` : value;
+}
+
+/** The absolute move, signed and grouped: "+1,234.56". */
+function formatChange(change) {
+    if (!Number.isFinite(change))
+        return '';
+    return `${signOf(change)}${numberFormat('', 2).format(Math.abs(change))}`;
 }
 
 function formatPercent(percent) {
     if (!Number.isFinite(percent))
         return '';
-    const sign = percent > 0 ? '+' : percent < 0 ? '−' : '';
-    return `${sign}${Math.abs(percent).toFixed(2)}%`;
+    return `${signOf(percent)}${numberFormat('', 2).format(Math.abs(percent))}%`;
+}
+
+/**
+ * Which session the exchange is in. The chart endpoint carries no marketState,
+ * but currentTradingPeriod gives the pre/regular/post windows in epoch seconds
+ * for the symbol's own exchange, which answers the same question.
+ */
+function marketStateOf(meta, now) {
+    const periods = meta?.currentTradingPeriod;
+    if (!periods)
+        return 'unknown';
+
+    const within = w => Number.isFinite(w?.start) && now >= w.start && now < w.end;
+    if (within(periods.regular))
+        return 'regular';
+    if (within(periods.pre))
+        return 'pre';
+    if (within(periods.post))
+        return 'post';
+    return 'closed';
+}
+
+function marketLabel(state) {
+    switch (state) {
+    case 'pre':
+        return _('Pre-market');
+    case 'post':
+        return _('After hours');
+    case 'closed':
+        return _('Closed');
+    default:
+        return '';
+    }
+}
+
+/**
+ * A theme colour as 0-1 floats. Clutter hands colours back as bytes on some
+ * versions and floats on others, so the scale is inferred from the values
+ * rather than assumed.
+ */
+function inkFrom(color) {
+    const scale = Math.max(color.red, color.green, color.blue) > 1 ? 255 : 1;
+    return [color.red / scale, color.green / scale, color.blue / scale];
 }
 
 /** Thin wrapper over the Yahoo chart endpoint. One request per symbol. */
@@ -106,6 +208,7 @@ class YahooFinance {
 
         return {
             symbol: meta.symbol ?? symbol,
+            market: marketStateOf(meta, Math.floor(Date.now() / 1000)),
             name: meta.shortName ?? meta.longName ?? '',
             currency: meta.currency ?? '',
             exchange: meta.exchangeName ?? '',
@@ -139,6 +242,9 @@ function createSparkline(history, trend, height) {
         const cr = area.get_context();
         const [width, h] = area.get_surface_size();
         const [r, g, b] = GRAPH_COLORS[trend] ?? GRAPH_COLORS.flat;
+        // Grid and guide borrow the theme's own text colour, so they stay
+        // visible on a light shell instead of being white on white.
+        const [ir, ig, ib] = inkFrom(area.get_theme_node().get_foreground_color());
 
         const min = Math.min(...history);
         const max = Math.max(...history);
@@ -164,7 +270,7 @@ function createSparkline(history, trend, height) {
 
         cr.setLineWidth(1);
         cr.setDash([], 0);
-        cr.setSourceRGBA(1, 1, 1, 0.07);
+        cr.setSourceRGBA(ir, ig, ib, 0.09);
         for (let i = 1; i < columns; i++) {
             const gx = crisp((width * i) / columns);
             cr.moveTo(gx, 0);
@@ -204,7 +310,7 @@ function createSparkline(history, trend, height) {
             const openY = crisp(y(history[0]));
             cr.setLineWidth(1);
             cr.setDash([3, 3], 0);
-            cr.setSourceRGBA(1, 1, 1, 0.22);
+            cr.setSourceRGBA(ir, ig, ib, 0.28);
             cr.moveTo(0, openY);
             cr.lineTo(width, openY);
             cr.stroke();
@@ -252,6 +358,13 @@ class Indicator extends PanelMenu.Button {
         this._settingsIds = [];
         this._cancellable = null;
         this._destroyed = false;
+        this._refreshing = false;
+        this._retries = 0;
+        this._marketsClosed = false;
+        this._cachedAt = null;
+        // Shell themes ship as two whole stylesheets with nothing on the stage
+        // to tell them apart, so the variant is measured once we are styled.
+        this._dark = true;
 
         this._box = new St.BoxLayout({
             style_class: 'panel-status-menu-box',
@@ -280,11 +393,57 @@ class Indicator extends PanelMenu.Button {
         for (const key of ['symbols', 'history-range'])
             this._settingsIds.push(this._settings.connect(`changed::${key}`, () => this._refresh()));
         this._settingsIds.push(
-            this._settings.connect('changed::refresh-interval', () => this._startRefresh()));
+            this._settings.connect('changed::refresh-interval', () => this._scheduleRefresh()));
 
+        this.connect('style-changed', () => this._updateThemeVariant());
+
+        // Coming back online is worth a retry: without this the panel sits on
+        // stale dashes until the next tick, however long that is.
+        this._network = Gio.NetworkMonitor.get_default();
+        this._networkId = this._network.connect('network-changed', (_monitor, available) => {
+            if (available && !this._refreshing && (this._failures > 0 || this._isStale()))
+                this._refresh();
+        });
+
+        this._loadCache();
         this._sync();
         this._refresh();
-        this._startRefresh();
+    }
+
+    // --- Theme ---------------------------------------------------------
+
+    /**
+     * Read the variant back from the colour the theme actually gives us: a
+     * light foreground means the shell is dark. More reliable than the
+     * colour-scheme setting, and it follows third-party themes too.
+     */
+    _updateThemeVariant() {
+        let color;
+        try {
+            color = this.get_theme_node().get_foreground_color();
+        } catch {
+            return;     // not on a stage yet; style-changed will come again
+        }
+
+        const [r, g, b] = inkFrom(color);
+        const dark = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5;
+        if (dark === this._dark)
+            return;
+
+        this._dark = dark;
+        this._applyThemeVariant();
+        this._sync();
+    }
+
+    _applyThemeVariant() {
+        // Only descendants are restyled, so this cannot feed back into the
+        // style-changed handler that called it.
+        for (const actor of [this, this.menu.box]) {
+            if (this._dark)
+                actor.remove_style_class_name('toprates-light');
+            else
+                actor.add_style_class_name('toprates-light');
+        }
     }
 
     _buildMenu() {
@@ -390,10 +549,11 @@ class Indicator extends PanelMenu.Button {
             this._fontStyle();
     }
 
-    _addLabel(text, styleClass) {
+    _addLabel(text, styleClass, opacity = 255) {
         const label = new St.Label({
             text,
             style_class: styleClass,
+            opacity,
             y_align: Clutter.ActorAlign.CENTER,
         });
         label.set_style(this._labelStyle());
@@ -420,7 +580,7 @@ class Indicator extends PanelMenu.Button {
         const separator = this._settings.get_string('panel-separator');
         symbols.forEach((symbol, i) => {
             if (i > 0)
-                this._addLabel(separator, 'toprates-label toprates-separator');
+                this._addLabel(separator, 'toprates-label toprates-separator', FAINT_OPACITY);
             this._addLabel(...this._panelText(symbol));
         });
     }
@@ -430,7 +590,7 @@ class Indicator extends PanelMenu.Button {
         const entry = this._quotes.get(symbol);
         if (!entry)
             return [`${symbol} …`, 'toprates-label'];
-        if (entry.error)
+        if (!entry.quote)
             return [`${symbol} —`, 'toprates-label toprates-error'];
 
         const {price, currency, percent} = entry.quote;
@@ -440,7 +600,8 @@ class Indicator extends PanelMenu.Button {
             if (change)
                 text += ` ${change}`;
         }
-        return [text, `toprates-label ${this._changeStyle(percent)}`];
+        return [text, `toprates-label ${this._changeStyle(percent)}`,
+            entry.stale ? STALE_OPACITY : 255];
     }
 
     _updateMenu() {
@@ -477,14 +638,28 @@ class Indicator extends PanelMenu.Button {
             nameBox.add_child(new St.Label({
                 text: subtitle,
                 style_class: 'toprates-subtitle',
+                opacity: MUTED_OPACITY,
+            }));
+        }
+
+        // Only worth saying when the exchange is not trading normally.
+        const badge = marketLabel(entry?.quote?.market);
+        if (badge) {
+            nameBox.add_child(new St.Label({
+                text: badge,
+                style_class: 'toprates-market',
+                opacity: MUTED_OPACITY,
             }));
         }
         header.add_child(nameBox);
 
         const valueBox = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.END});
+        if (entry?.stale)
+            valueBox.opacity = STALE_OPACITY;
+
         if (!entry) {
             valueBox.add_child(new St.Label({text: '…', style_class: 'toprates-price'}));
-        } else if (entry.error) {
+        } else if (!entry.quote) {
             valueBox.add_child(new St.Label({
                 text: entry.error,
                 style_class: 'toprates-price toprates-error',
@@ -495,9 +670,8 @@ class Indicator extends PanelMenu.Button {
                 text: formatPrice(price, currency),
                 style_class: 'toprates-price',
             }));
-            const delta = Number.isFinite(change)
-                ? `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change).toFixed(2)} (${formatPercent(percent)})`
-                : '';
+            const moved = formatChange(change);
+            const delta = moved ? `${moved} (${formatPercent(percent)})` : '';
             if (delta) {
                 valueBox.add_child(new St.Label({
                     text: delta,
@@ -546,6 +720,7 @@ class Indicator extends PanelMenu.Button {
         caption.add_child(new St.Label({
             text: this._historyRange(),
             style_class: 'toprates-range',
+            opacity: FAINT_OPACITY,
             x_expand: true,
         }));
         caption.add_child(new St.Label({
@@ -576,13 +751,20 @@ class Indicator extends PanelMenu.Button {
     }
 
     _updateStatus() {
-        if (!this._lastUpdate)
+        if (!this._lastUpdate) {
+            // Nothing fetched yet this session, but the cache had something.
+            if (this._cachedAt)
+                this._setStatus(`${_('Cached')} ${this._cachedAt.format('%H:%M')}`);
             return;
+        }
 
         const stamp = this._lastUpdate.format('%H:%M:%S');
-        this._setStatus(this._failures
-            ? `${_('Updated')} ${stamp} (${this._ageText()}) · ${this._failures} ${_('failed')}`
-            : `${_('Updated')} ${stamp} (${this._ageText()})`);
+        const parts = [`${_('Updated')} ${stamp} (${this._ageText()})`];
+        if (this._failures)
+            parts.push(`${this._failures} ${_('failed')}`);
+        if (this._marketsClosed)
+            parts.push(_('markets closed'));
+        this._setStatus(parts.join(' · '));
     }
 
     _startAgeTicker() {
@@ -599,6 +781,75 @@ class Indicator extends PanelMenu.Button {
         if (this._ageTimeoutId) {
             GLib.Source.remove(this._ageTimeoutId);
             this._ageTimeoutId = 0;
+        }
+    }
+
+    // --- Cache -----------------------------------------------------------
+
+    _cacheFile() {
+        return Gio.File.new_for_path(GLib.build_filenamev(
+            [GLib.get_user_cache_dir(), 'toprates', 'quotes.json']));
+    }
+
+    /**
+     * Seed the panel from the previous session, so it opens on real numbers
+     * instead of an ellipsis while the first request is still in flight.
+     */
+    _loadCache() {
+        let payload;
+        try {
+            const [ok, contents] = this._cacheFile().load_contents(null);
+            if (!ok)
+                return;
+            payload = JSON.parse(new TextDecoder().decode(contents));
+        } catch {
+            return;     // no cache yet, or unreadable: nothing worth reporting
+        }
+
+        if (payload?.version !== CACHE_VERSION)
+            return;
+
+        // The stored history only matches the range it was fetched for.
+        const sameRange = payload.range === this._historyRange();
+        for (const symbol of this._symbols()) {
+            const quote = payload.quotes?.[symbol];
+            if (!quote)
+                continue;
+            this._quotes.set(symbol, {
+                quote: sameRange ? quote : {...quote, history: []},
+                stale: true,
+            });
+        }
+
+        if (Number.isFinite(payload.savedAt))
+            this._cachedAt = GLib.DateTime.new_from_unix_local(payload.savedAt);
+    }
+
+    _saveCache() {
+        const quotes = {};
+        for (const [symbol, entry] of this._quotes) {
+            if (entry.quote)
+                quotes[symbol] = entry.quote;
+        }
+        if (Object.keys(quotes).length === 0)
+            return;
+
+        const payload = JSON.stringify({
+            version: CACHE_VERSION,
+            savedAt: Math.floor(Date.now() / 1000),
+            range: this._historyRange(),
+            quotes,
+        });
+
+        const file = this._cacheFile();
+        try {
+            GLib.mkdir_with_parents(file.get_parent().get_path(), 0o755);
+            file.replace_contents_bytes_async(
+                new GLib.Bytes(new TextEncoder().encode(payload)),
+                null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null)
+                .catch(e => console.debug(`TopRates: cache write failed: ${e.message}`));
+        } catch (e) {
+            console.debug(`TopRates: cache write failed: ${e.message}`);
         }
     }
 
@@ -619,25 +870,38 @@ class Indicator extends PanelMenu.Button {
         }
 
         this._setStatus(_('Updating…'));
+        this._refreshing = true;
 
         const range = this._historyRange();
 
         const results = await Promise.allSettled(
             symbols.map(symbol => this._finance.fetchQuote(symbol, range, cancellable)));
 
+        this._refreshing = false;
+
         // A newer refresh (or teardown) started while we were waiting.
         if (this._destroyed || cancellable.is_cancelled() || cancellable !== this._cancellable)
             return;
 
         let failures = 0;
+        let closed = 0;
         symbols.forEach((symbol, i) => {
             const result = results[i];
             if (result.status === 'fulfilled') {
                 this._quotes.set(symbol, {quote: result.value});
-            } else {
-                failures += 1;
-                this._quotes.set(symbol, {error: result.reason?.message ?? _('error')});
+                if (result.value.market === 'closed')
+                    closed += 1;
+                return;
             }
+
+            failures += 1;
+            // A symbol that failed keeps its last known price, marked stale,
+            // rather than trading a real number for an error string.
+            const error = result.reason?.message ?? _('error');
+            const previous = this._quotes.get(symbol)?.quote;
+            this._quotes.set(symbol, previous
+                ? {quote: previous, stale: true, error}
+                : {error});
         });
 
         // Drop quotes for symbols that are no longer followed.
@@ -646,24 +910,54 @@ class Indicator extends PanelMenu.Button {
                 this._quotes.delete(symbol);
         }
 
-        this._lastUpdate = GLib.DateTime.new_now_local();
+        const succeeded = symbols.length - failures;
+        this._marketsClosed = succeeded > 0 && closed === succeeded;
+        this._retries = failures === symbols.length ? this._retries + 1 : 0;
+
+        if (succeeded > 0) {
+            this._lastUpdate = GLib.DateTime.new_now_local();
+            this._cachedAt = null;
+            this._saveCache();
+        }
+
         this._failures = failures;
         this._updateStatus();
 
         this._sync();
+        this._scheduleRefresh();
     }
 
-    _startRefresh() {
+    /**
+     * Seconds until the next automatic refresh: sooner after a failed round,
+     * later when every followed market is shut, the configured interval
+     * otherwise.
+     */
+    _nextDelay() {
+        const interval = this._settings.get_int('refresh-interval');
+        if (this._retries > 0) {
+            const backoff = RETRY_DELAYS[
+                Math.min(this._retries, RETRY_DELAYS.length) - 1];
+            return Math.min(backoff, interval);
+        }
+        return this._marketsClosed
+            ? Math.max(interval, CLOSED_REFRESH_INTERVAL)
+            : interval;
+    }
+
+    /** One-shot: every refresh books the next one, so the delay can vary. */
+    _scheduleRefresh() {
         if (this._timeoutId) {
             GLib.Source.remove(this._timeoutId);
             this._timeoutId = 0;
         }
+        if (this._destroyed)
+            return;
 
-        const interval = this._settings.get_int('refresh-interval');
         this._timeoutId = GLib.timeout_add_seconds(
-            GLib.PRIORITY_DEFAULT, interval, () => {
+            GLib.PRIORITY_DEFAULT, this._nextDelay(), () => {
+                this._timeoutId = 0;
                 this._refresh();
-                return GLib.SOURCE_CONTINUE;
+                return GLib.SOURCE_REMOVE;
             });
     }
 
@@ -679,6 +973,12 @@ class Indicator extends PanelMenu.Button {
 
         this._cancellable?.cancel();
         this._cancellable = null;
+
+        if (this._networkId) {
+            this._network.disconnect(this._networkId);
+            this._networkId = 0;
+        }
+        this._network = null;
 
         for (const id of this._settingsIds)
             this._settings.disconnect(id);

@@ -1,13 +1,17 @@
 # TopRates — build, install and run helpers.
 #
-#   make            # compile schemas in-tree (a syntax check for the gschema)
+#   make            # compile schemas and translations in-tree
 #   make install    # install into ~/.local/share/gnome-shell/extensions
+#   make pot        # regenerate po/toprates.pot from the sources
+#   make update-po  # merge new strings into every po/*.po
 #   make enable     # enable the extension in the current session
 #   make run        # install, then launch a nested GNOME Shell to test in
 #   make pack       # build a distributable shell-extension.zip
 #   make uninstall  # remove the installed copy
 
 UUID    := toprates@hellish.github.io
+VERSION := 2.1
+DOMAIN  := toprates
 DESTDIR := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 SCHEMA  := schemas/org.gnome.shell.extensions.toprates.gschema.xml
 
@@ -18,9 +22,16 @@ DESKTOP := $(HOME)/.local/share/applications/io.github.hellish.TopRates.desktop
 SOURCES := extension.js prefs.js metadata.json stylesheet.css icons
 ZIP     := $(UUID).shell-extension.zip
 
-.PHONY: all schemas install uninstall reinstall enable disable prefs pack run logs clean
+# Translations. locale/ is generated, never committed; the shell reads it from
+# inside the installed extension directory.
+POT     := po/$(DOMAIN).pot
+POFILES := $(wildcard po/*.po)
+MOFILES := $(patsubst po/%.po,locale/%/LC_MESSAGES/$(DOMAIN).mo,$(POFILES))
 
-all: schemas
+.PHONY: all schemas translations pot update-po install uninstall reinstall \
+        enable disable prefs pack run logs clean
+
+all: schemas translations
 
 ## Compile the GSettings schema in-tree; also catches XML/schema errors early.
 schemas: schemas/gschemas.compiled
@@ -28,11 +39,32 @@ schemas: schemas/gschemas.compiled
 schemas/gschemas.compiled: $(SCHEMA)
 	glib-compile-schemas schemas
 
+## Compile every translation into locale/, where the shell looks for them.
+translations: $(MOFILES)
+
+locale/%/LC_MESSAGES/$(DOMAIN).mo: po/%.po
+	@mkdir -p $(dir $@)
+	msgfmt -o $@ $<
+
+## Re-extract translatable strings from the sources.
+pot:
+	xgettext --from-code=UTF-8 --language=JavaScript --keyword=_ --keyword=N_ \
+	    --package-name=TopRates --package-version=$(VERSION) \
+	    --copyright-holder="TopRates contributors" \
+	    --msgid-bugs-address="https://github.com/hellish" \
+	    -o $(POT) extension.js prefs.js
+	@echo "Wrote $(POT)"
+
+## Merge newly extracted strings into the existing translations.
+update-po: pot
+	@for po in $(POFILES); do msgmerge --update --backup=none $$po $(POT); done
+
 ## Copy into the user extensions directory and compile the schema there.
-install: $(SOURCES) $(SCHEMA)
+install: $(SOURCES) $(SCHEMA) translations
 	rm -rf "$(DESTDIR)"
 	mkdir -p "$(DESTDIR)"
 	cp -r $(SOURCES) schemas "$(DESTDIR)"/
+	@if [ -d locale ]; then cp -r locale "$(DESTDIR)"/; fi
 	glib-compile-schemas "$(DESTDIR)/schemas"
 	@echo "Installed to $(DESTDIR)"
 	@echo "Wayland: log out and back in (or use 'make run') before the shell picks it up."
@@ -58,6 +90,7 @@ pack: $(SOURCES) $(SCHEMA)
 	gnome-extensions pack --force \
 	    --extra-source=stylesheet.css \
 	    --extra-source=icons \
+	    --podir=po \
 	    --schema=$(SCHEMA)
 	@echo "Built $(ZIP)"
 
@@ -75,4 +108,5 @@ logs:
 	journalctl -f -o cat /usr/bin/gnome-shell
 
 clean:
+	rm -rf locale
 	rm -f schemas/gschemas.compiled $(ZIP)

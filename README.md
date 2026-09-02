@@ -49,6 +49,8 @@ is not a prerequisite for running the extension.
 | Target | What it does |
 | --- | --- |
 | `make` / `make schemas` | Compile the gschema in-tree (a quick schema syntax check) |
+| `make translations` | Compile `po/*.po` into `locale/` |
+| `make pot` / `make update-po` | Re-extract strings, then merge them into the translations |
 | `make install` | Install into `~/.local/share/gnome-shell/extensions/toprates@hellish.github.io` |
 | `make reinstall` | Uninstall, then install |
 | `make uninstall` | Remove the installed copy |
@@ -103,7 +105,11 @@ Open the preferences window — from the popup menu's **Preferences** item, via
 
 The **Symbols** group is a full editor:
 
-- **+** in the group header appends a new row.
+- **Search for a symbol** looks tickers up on Yahoo as you type — "vanguard
+  all world" finds `VWRL.SW` and friends — and adding one from the results
+  needs no knowledge of the exchange suffix. Duplicates are ignored. The
+  lookup uses the same key-free endpoint the extension polls for quotes.
+- **+** in the group header appends a blank row to type into directly.
 - Type a ticker and press **Enter** (or click the apply button) to save it.
   Entries are upper-cased and blank rows are dropped on save.
 - **↑ / ↓** reorder the list. Order matters: it decides the order of the popup
@@ -123,7 +129,41 @@ applies:
 | Commodities | `GC=F`, `CL=F` |
 
 If a ticker is wrong the row shows the error (`HTTP 404`) instead of a price;
-the other symbols keep updating.
+the other symbols keep updating. A symbol that fails *after* it has worked
+keeps its last known price, dimmed, rather than dropping back to an error.
+
+## Prices, currencies and locale
+
+Prices are formatted with `Intl.NumberFormat`, so grouping and decimal marks
+follow the session locale (`1.234,56 €` under a German locale, `$1,234.56`
+under a US one) and every ISO currency is understood.
+
+Markets quoted in minor units are the exception: London prices in pence
+(`GBp`), Johannesburg in cents (`ZAc`) and Tel Aviv in agorot (`ILA`) are
+shown as a plain number plus the code. `Intl` accepts those codes but renders
+them with the major unit's symbol, which would misprice them by 100×.
+
+## Market hours
+
+Yahoo's chart response carries the exchange's own pre / regular / post windows,
+so every quote knows which session its market is in. The popup labels anything
+that is not trading normally — **Pre-market**, **After hours**, **Closed** —
+and when *every* followed market is shut the poll interval stretches to at
+least 30 minutes instead of waking the radio all night.
+
+## Offline and stale data
+
+The last successful round is cached in
+`~/.cache/toprates/quotes.json`, so the panel opens on real numbers instead of
+an ellipsis while the first request is still in flight. Cached values are
+dimmed and the popup says `Cached HH:MM` until a live refresh lands. Stored
+history is discarded when the graph range changes, since it only matches the
+range it was fetched for.
+
+A round in which every symbol fails is retried on a backoff — 30s, 60s, 120s,
+300s, never slower than the configured interval — and the extension watches
+`Gio.NetworkMonitor`, so reconnecting triggers an immediate retry rather than
+a wait for the next tick.
 
 ## The top bar
 
@@ -180,6 +220,16 @@ format" — even though it is perfectly valid SVG and `rsvg-convert` renders it.
 That is silent: the icon simply does not appear.
 
 The panel glyph can be switched off with **Show icon**.
+
+### Light and dark
+
+Shell themes ship as two whole stylesheets with nothing on the stage to tell
+them apart, so the extension measures the variant instead: it reads the
+foreground colour the theme hands it and treats a light foreground as a dark
+theme. Muted text is faded with actor opacity rather than a hardcoded
+`rgba(255,255,255,…)`, so it keeps the theme's own colour, the sparkline draws
+its grid in that same ink, and the gain/loss accents switch to darker variants
+under `.toprates-light`.
 
 ### The preferences window icon
 
@@ -267,9 +317,30 @@ metadata.json   UUID, name, supported shell versions, schema id
 stylesheet.css  Panel label, popup rows, sparklines, gain/loss colours
 icons/          Panel glyph and application icon
 schemas/        GSettings schema source
+po/             Translation template and translations
+locale/         Compiled translations (generated, not committed)
 Makefile        build / install / run / pack targets
 install.sh      Plain-shell equivalent of 'make install'
 ```
+
+## Translations
+
+`metadata.json` declares the `toprates` gettext domain, and the shell reads
+compiled catalogues from `locale/` inside the installed extension.
+
+```bash
+make pot                  # re-extract strings into po/toprates.pot
+msginit -l fr -i po/toprates.pot -o po/fr.po   # start a new language
+make update-po            # merge new strings into every existing po/*.po
+make translations         # compile po/*.po into locale/
+```
+
+`make install` compiles translations first, and `make pack` hands `po/` to
+`gnome-extensions pack --podir`, so the zip carries them too.
+
+`po/el.po` is a machine-drafted Greek starting point covering the short UI
+strings; it wants review by a native speaker. Longer descriptions are left
+untranslated on purpose, so they fall back to English rather than to a guess.
 
 ## Development guidelines
 
@@ -354,6 +425,9 @@ On X11, Looking Glass (`Alt`+`F2`, `lg`) inspects the live actor tree.
 make disable
 make uninstall
 ```
+
+The quote cache lives outside the extension directory; remove it with
+`rm -rf ~/.cache/toprates`.
 
 `make uninstall` also removes
 `~/.local/share/applications/io.github.hellish.TopRates.desktop`, the hidden

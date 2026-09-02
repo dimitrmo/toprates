@@ -15,7 +15,10 @@
 
 .toprates-subtitle {
     font-size: 0.85em;
-    color: rgba(255, 255, 255, 0.6);
+}
+
+.toprates-market {
+    font-size: 0.8em;
 }
 
 .toprates-price,
@@ -45,7 +48,6 @@
 }
 
 .toprates-separator {
-    color: rgba(255, 255, 255, 0.4);
     margin-left: 4px;
 }
 
@@ -64,5 +66,21 @@
 
 .toprates-range {
     font-size: 0.8em;
-    color: rgba(255, 255, 255, 0.55);
+}
+
+/*
+ * Light shell themes: the gain/loss accents above are tuned for a dark ground
+ * and wash out on a pale one, so they darken. The class is put on the panel
+ * button and the popup by the extension once it has measured the theme.
+ */
+.toprates-light .toprates-up {
+    color: #1a7f4f;
+}
+
+.toprates-light .toprates-down {
+    color: #c01c28;
+}
+
+.toprates-light .toprates-error {
+    color: #9c6e00;
 }

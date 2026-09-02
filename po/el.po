@@ -1,0 +1,325 @@
+# Greek translation of TopRates.
+# This file is distributed under the same licence as the TopRates package.
+#
+# Machine-drafted starting point: short UI strings only, and it wants review by
+# a native speaker. Longer descriptions are deliberately left untranslated so
+# they fall back to English rather than to a guess.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: TopRates 2.1\n"
+"Report-Msgid-Bugs-To: https://github.com/hellish\n"
+"POT-Creation-Date: 2026-09-02 21:00+0300\n"
+"PO-Revision-Date: 2026-09-02 21:00+0300\n"
+"Last-Translator: unassigned\n"
+"Language-Team: Greek\n"
+"Language: el\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+
+#: extension.js:133
+msgid "Pre-market"
+msgstr "Πριν το άνοιγμα"
+
+#: extension.js:135
+msgid "After hours"
+msgstr "Μετά το κλείσιμο"
+
+#: extension.js:137
+msgid "Closed"
+msgstr "Κλειστή"
+
+#: extension.js:181
+msgid "no data"
+msgstr "χωρίς δεδομένα"
+
+#: extension.js:448
+msgid "Loading…"
+msgstr "Φόρτωση…"
+
+#: extension.js:454
+msgid "Refresh now"
+msgstr "Ανανέωση τώρα"
+
+#: extension.js:458
+msgid "Preferences"
+msgstr "Προτιμήσεις"
+
+#: extension.js:569
+msgid "No symbols"
+msgstr "Χωρίς σύμβολα"
+
+#: extension.js:606
+msgid "Add symbols in Preferences"
+msgstr "Προσθέστε σύμβολα στις Προτιμήσεις"
+
+#: extension.js:740 extension.js:742 extension.js:743
+msgid "ago"
+msgstr "πριν"
+
+#: extension.js:750
+msgid "Cached"
+msgstr "Αποθηκευμένο"
+
+#: extension.js:755
+msgid "Updated"
+msgstr "Ενημερώθηκε"
+
+#: extension.js:757
+msgid "failed"
+msgstr "απέτυχαν"
+
+#: extension.js:759
+msgid "markets closed"
+msgstr "αγορές κλειστές"
+
+#: extension.js:860
+msgid "No symbols configured"
+msgstr "Δεν έχουν οριστεί σύμβολα"
+
+#: extension.js:865
+msgid "Updating…"
+msgstr "Ενημέρωση…"
+
+#: extension.js:893
+msgid "error"
+msgstr "σφάλμα"
+
+#: prefs.js:59
+msgid "General"
+msgstr "Γενικά"
+
+#: prefs.js:162
+msgid "Add a symbol"
+msgstr "Προσθήκη συμβόλου"
+
+#: prefs.js:174
+msgid "Symbols"
+msgstr "Σύμβολα"
+
+#: prefs.js:175
+msgid ""
+"Yahoo Finance tickers, including the exchange suffix where one applies: DOX, "
+"VWCE.DE, EURUSD=X, BTC-EUR, ^GSPC. Press Enter to save a symbol."
+msgstr ""
+
+#: prefs.js:183
+msgid "No symbols yet"
+msgstr "Δεν υπάρχουν σύμβολα ακόμη"
+
+#: prefs.js:184
+msgid "Search above, or use + to type one in."
+msgstr ""
+
+#: prefs.js:198
+msgid "Search for a symbol"
+msgstr "Αναζήτηση συμβόλου"
+
+#: prefs.js:271
+msgid "Search failed"
+msgstr "Η αναζήτηση απέτυχε"
+
+#: prefs.js:292
+msgid "Invalid search"
+msgstr "Μη έγκυρη αναζήτηση"
+
+#: prefs.js:309
+msgid "Nothing found"
+msgstr "Δεν βρέθηκε τίποτα"
+
+#: prefs.js:413
+msgid "Symbol"
+msgstr "Σύμβολο"
+
+#: prefs.js:426
+msgid "Move up"
+msgstr "Μετακίνηση πάνω"
+
+#: prefs.js:428
+msgid "Move down"
+msgstr "Μετακίνηση κάτω"
+
+#: prefs.js:430
+msgid "Remove"
+msgstr "Αφαίρεση"
+
+#: prefs.js:469
+msgid "Top bar"
+msgstr "Επάνω μπάρα"
+
+#: prefs.js:470
+msgid ""
+"Which symbols appear in the panel, in the order of the list above. With none "
+"selected the first symbol is shown."
+msgstr ""
+
+#: prefs.js:475
+msgid "Separator"
+msgstr "Διαχωριστικό"
+
+#: prefs.js:476
+msgid "Drawn between symbols in the panel."
+msgstr ""
+
+#: prefs.js:478
+msgid "Custom…"
+msgstr "Προσαρμοσμένο…"
+
+#: prefs.js:482
+msgid "Custom separator"
+msgstr "Προσαρμοσμένο διαχωριστικό"
+
+#: prefs.js:545
+msgid "History graph"
+msgstr "Γράφημα ιστορικού"
+
+#: prefs.js:546
+msgid "A price sparkline under every symbol in the popup."
+msgstr ""
+
+#: prefs.js:550
+msgid "Show history graph"
+msgstr "Εμφάνιση γραφήματος ιστορικού"
+
+#: prefs.js:555
+msgid "Period"
+msgstr "Περίοδος"
+
+#: prefs.js:556
+msgid "How far back the graph reaches."
+msgstr ""
+
+#: prefs.js:566
+msgid "Graph height"
+msgstr "Ύψος γραφήματος"
+
+#: prefs.js:567
+msgid "Pixels."
+msgstr "Εικονοστοιχεία."
+
+#: prefs.js:588
+msgid "Display"
+msgstr "Εμφάνιση"
+
+#: prefs.js:589
+msgid "What the top bar shows. The popup always lists every symbol."
+msgstr ""
+
+#: prefs.js:594
+msgid "Refresh interval"
+msgstr "Συχνότητα ανανέωσης"
+
+#: prefs.js:595
+msgid "Seconds between requests to Yahoo Finance."
+msgstr ""
+
+#: prefs.js:607
+msgid "Show icon"
+msgstr "Εμφάνιση εικονιδίου"
+
+#: prefs.js:608
+msgid "The TopRates glyph, left of the quotes."
+msgstr ""
+
+#: prefs.js:613
+msgid "Show label"
+msgstr ""
+
+#: prefs.js:618
+msgid "Font size"
+msgstr ""
+
+#: prefs.js:619
+msgid "Panel label size as a percentage of the top bar default."
+msgstr ""
+
+#: prefs.js:634
+msgid "Font weight"
+msgstr ""
+
+#: prefs.js:636
+msgid "Light"
+msgstr ""
+
+#: prefs.js:636
+msgid "Regular"
+msgstr ""
+
+#: prefs.js:636
+msgid "Medium"
+msgstr ""
+
+#: prefs.js:636
+msgid "Semi-bold"
+msgstr ""
+
+#: prefs.js:636
+msgid "Bold"
+msgstr ""
+
+#: prefs.js:646
+msgid "Show daily change"
+msgstr ""
+
+#: prefs.js:647
+msgid "Appends the percentage move to the panel label."
+msgstr ""
+
+#: prefs.js:653
+msgid "Colour gains and losses"
+msgstr ""
+
+#: prefs.js:654
+msgid "Green when up, red when down."
+msgstr ""
+
+#: prefs.js:666 prefs.js:671
+msgid "Font family"
+msgstr ""
+
+#: prefs.js:667 prefs.js:692
+msgid "Used by the panel label and the popup."
+msgstr ""
+
+#: prefs.js:678
+msgid "Use the system font"
+msgstr ""
+
+#: prefs.js:693
+msgid "System font. Pick one to override it."
+msgstr ""
+
+#: prefs.js:720
+msgid "Placement"
+msgstr ""
+
+#: prefs.js:721
+msgid "Where the indicator sits in the top bar."
+msgstr ""
+
+#: prefs.js:727
+msgid "Panel box"
+msgstr ""
+
+#: prefs.js:728
+msgid "Left"
+msgstr ""
+
+#: prefs.js:728
+msgid "Center"
+msgstr ""
+
+#: prefs.js:728
+msgid "Right"
+msgstr ""
+
+#: prefs.js:736
+msgid "Index within the box"
+msgstr ""
+
+#: prefs.js:737
+msgid "0 is leftmost; -1 appends to the end."
+msgstr ""

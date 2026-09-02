@@ -4,6 +4,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
+import Soup from 'gi://Soup?version=3.0';
 
 // Only needed to retag the window on Wayland; missing on X11-only installs.
 const GdkWayland = await import('gi://GdkWayland?version=4.0')
@@ -15,8 +16,18 @@ const prefsModule = await import('resource:///org/gnome/Shell/Extensions/js/exte
     .catch(() => import('resource:///org/gnome/Shell/Extensions/js/extensionPreferences.js'));
 const {ExtensionPreferences, gettext: _} = prefsModule;
 
+Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
+
 // The app id the prefs window claims, and the desktop entry backing it.
 const APP_ID = 'io.github.hellish.TopRates';
+
+// Symbol lookup. Like the chart endpoint the extension polls, this one needs
+// no API key or cookie.
+const SEARCH_API = 'https://query1.finance.yahoo.com/v1/finance/search';
+const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) toprates-gnome-extension';
+const SEARCH_DEBOUNCE_MS = 350;
+const SEARCH_RESULTS = 8;
+const SEARCH_TIMEOUT = 10;
 
 const SEPARATORS = [
     {label: '│  (vertical line)', value: '│'},
@@ -66,7 +77,12 @@ export default class TopRatesPreferences extends ExtensionPreferences {
             this._rebuildSymbolRows(settings);
             this._rebuildPanelRows(settings);
         });
-        window.connect('close-request', () => settings.disconnect(changedId));
+        window.connect('close-request', () => {
+            settings.disconnect(changedId);
+            this._cancelSearch();
+            // A popover with an explicit parent has to be unparented by hand.
+            this._searchPopover?.unparent();
+        });
 
         this._rebuildSymbolRows(settings);
         this._rebuildPanelRows(settings);
@@ -161,10 +177,206 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         });
         page.add(this._symbolsGroup);
 
+        this._buildSearch(settings);
+
         this._emptyRow = new Adw.ActionRow({
             title: _('No symbols yet'),
-            subtitle: _('Use + to add one.'),
+            subtitle: _('Search above, or use + to type one in.'),
         });
+    }
+
+
+    // --- Symbol search ---------------------------------------------------
+
+    /**
+     * A suggestion list under the search entry. Yahoo's search endpoint needs
+     * no key or cookie, same as the chart endpoint the extension itself uses,
+     * so "vanguard all world" can be turned into VWCE.DE without the user
+     * having to know the ticker or its exchange suffix.
+     */
+    _buildSearch(settings) {
+        this._searchRow = new Adw.EntryRow({title: _('Search for a symbol')});
+        this._searchRow.add_prefix(new Gtk.Image({icon_name: 'system-search-symbolic'}));
+        this._symbolsGroup.add(this._searchRow);
+
+        this._searchList = new Gtk.ListBox({
+            selection_mode: Gtk.SelectionMode.NONE,
+            css_classes: ['boxed-list'],
+        });
+        this._searchList.connect('row-activated', (_list, row) => {
+            if (row._symbol)
+                this._addSearchResult(settings, row._symbol);
+        });
+
+        this._searchPopover = new Gtk.Popover({
+            // Autohide would take the keyboard grab and stop the typing that
+            // drives the search in the first place.
+            autohide: false,
+            has_arrow: false,
+            halign: Gtk.Align.START,
+            width_request: 400,
+            child: new Gtk.ScrolledWindow({
+                propagate_natural_height: true,
+                max_content_height: 280,
+                hscrollbar_policy: Gtk.PolicyType.NEVER,
+                child: this._searchList,
+            }),
+        });
+        this._searchPopover.set_parent(this._searchRow);
+
+        this._searchRow.connect('changed', () => this._queueSearch(settings));
+    }
+
+    /** Typing should not fire a request per keystroke. */
+    _queueSearch(settings) {
+        if (this._searchTimeout) {
+            GLib.Source.remove(this._searchTimeout);
+            this._searchTimeout = 0;
+        }
+
+        const query = this._searchRow.text.trim();
+        if (query.length < 2) {
+            this._cancelSearch();
+            this._searchPopover.popdown();
+            return;
+        }
+
+        this._searchTimeout = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, SEARCH_DEBOUNCE_MS, () => {
+                this._searchTimeout = 0;
+                this._search(settings, query);
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _cancelSearch() {
+        if (this._searchTimeout) {
+            GLib.Source.remove(this._searchTimeout);
+            this._searchTimeout = 0;
+        }
+        this._searchCancellable?.cancel();
+        this._searchCancellable = null;
+    }
+
+    async _search(settings, query) {
+        this._searchCancellable?.cancel();
+        this._searchCancellable = new Gio.Cancellable();
+        const cancellable = this._searchCancellable;
+
+        let quotes;
+        try {
+            quotes = await this._fetchSearch(query, cancellable);
+        } catch (e) {
+            if (!cancellable.is_cancelled())
+                this._showSearchMessage(`${_('Search failed')}: ${e.message}`);
+            return;
+        }
+
+        // A later keystroke already replaced this search.
+        if (cancellable.is_cancelled() || cancellable !== this._searchCancellable)
+            return;
+
+        this._showSearchResults(quotes);
+    }
+
+    async _fetchSearch(query, cancellable) {
+        this._session ??= new Soup.Session({
+            user_agent: USER_AGENT,
+            timeout: SEARCH_TIMEOUT,
+        });
+
+        const uri = `${SEARCH_API}?q=${encodeURIComponent(query)}` +
+            `&quotesCount=${SEARCH_RESULTS}&newsCount=0`;
+        const message = Soup.Message.new('GET', uri);
+        if (!message)
+            throw new Error(_('Invalid search'));
+
+        const bytes = await this._session.send_and_read_async(
+            message, GLib.PRIORITY_DEFAULT, cancellable);
+
+        const status = message.get_status();
+        if (status !== Soup.Status.OK)
+            throw new Error(`HTTP ${status}`);
+
+        const payload = JSON.parse(new TextDecoder().decode(bytes.get_data()));
+        return (payload?.quotes ?? []).filter(quote => quote.symbol);
+    }
+
+    _showSearchResults(quotes) {
+        this._clearSearchList();
+
+        if (quotes.length === 0) {
+            this._showSearchMessage(_('Nothing found'));
+            return;
+        }
+
+        for (const quote of quotes) {
+            const box = new Gtk.Box({
+                orientation: Gtk.Orientation.VERTICAL,
+                margin_top: 6,
+                margin_bottom: 6,
+                margin_start: 12,
+                margin_end: 12,
+            });
+            box.append(new Gtk.Label({
+                label: quote.symbol,
+                xalign: 0,
+                css_classes: ['heading'],
+            }));
+
+            const detail = [quote.shortname ?? quote.longname, quote.exchDisp, quote.typeDisp]
+                .filter(part => part)
+                .join(' · ');
+            if (detail) {
+                box.append(new Gtk.Label({
+                    label: detail,
+                    xalign: 0,
+                    ellipsize: Pango.EllipsizeMode.END,
+                    css_classes: ['dim-label', 'caption'],
+                }));
+            }
+
+            const row = new Gtk.ListBoxRow({activatable: true, child: box});
+            row._symbol = quote.symbol;
+            this._searchList.append(row);
+        }
+
+        this._searchPopover.popup();
+    }
+
+    _showSearchMessage(text) {
+        this._clearSearchList();
+        this._searchList.append(new Gtk.ListBoxRow({
+            activatable: false,
+            child: new Gtk.Label({
+                label: text,
+                margin_top: 12,
+                margin_bottom: 12,
+                margin_start: 12,
+                margin_end: 12,
+                css_classes: ['dim-label'],
+            }),
+        }));
+        this._searchPopover.popup();
+    }
+
+    _clearSearchList() {
+        let child = this._searchList.get_first_child();
+        while (child) {
+            const next = child.get_next_sibling();
+            this._searchList.remove(child);
+            child = next;
+        }
+    }
+
+    /** Adding from a result skips duplicates and clears the search. */
+    _addSearchResult(settings, symbol) {
+        const symbols = this._symbols(settings);
+        if (!symbols.includes(symbol))
+            this._setSymbols(settings, [...symbols, symbol]);
+
+        this._searchRow.text = '';
+        this._searchPopover.popdown();
     }
 
     _symbols(settings) {

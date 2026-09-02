@@ -17,6 +17,14 @@ done
 
 glib-compile-schemas "$DEST/schemas"
 
+# Translations: compiled straight into the installed copy.
+for po in "$SRC"/po/*.po; do
+    [ -e "$po" ] || break
+    lang="$(basename "$po" .po)"
+    mkdir -p "$DEST/locale/$lang/LC_MESSAGES"
+    msgfmt -o "$DEST/locale/$lang/LC_MESSAGES/toprates.mo" "$po"
+done
+
 echo "Installed to $DEST"
 echo "On Wayland, log out and back in, then run:"
 echo "  gnome-extensions enable $UUID"
