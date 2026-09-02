@@ -5,6 +5,8 @@
 
 .toprates-quote {
     spacing: 12px;
+    /* Keeps consecutive charts from running into one another. */
+    margin-bottom: 6px;
 }
 
 .toprates-symbol {

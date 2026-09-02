@@ -11,6 +11,9 @@ UUID    := toprates@hellish.github.io
 DESTDIR := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 SCHEMA  := schemas/org.gnome.shell.extensions.toprates.gschema.xml
 
+# Hidden desktop entry the prefs window writes so the shell can find its icon.
+DESKTOP := $(HOME)/.local/share/applications/io.github.hellish.TopRates.desktop
+
 # Files the shell actually loads. README.md and this Makefile are not installed.
 SOURCES := extension.js prefs.js metadata.json stylesheet.css icons
 ZIP     := $(UUID).shell-extension.zip
@@ -36,6 +39,7 @@ install: $(SOURCES) $(SCHEMA)
 
 uninstall:
 	rm -rf "$(DESTDIR)"
+	rm -f "$(DESKTOP)"
 	@echo "Removed $(DESTDIR)"
 
 reinstall: uninstall install

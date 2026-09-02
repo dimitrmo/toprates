@@ -124,8 +124,9 @@ class YahooFinance {
 }
 
 /**
- * A minimal price sparkline: filled area plus a stroked line, scaled to the
- * min/max of the series. Drawn with Cairo on an St.DrawingArea.
+ * A price sparkline drawn with Cairo on an St.DrawingArea: a faint grid, a
+ * dashed line at the opening value, a gradient area fill under the series and
+ * a marker on the latest point.
  */
 function createSparkline(history, trend, height) {
     const area = new St.DrawingArea({
@@ -142,7 +143,7 @@ function createSparkline(history, trend, height) {
         const min = Math.min(...history);
         const max = Math.max(...history);
         const span = max - min;
-        const pad = 2;
+        const pad = 4;
         const usable = Math.max(1, h - pad * 2);
         // A flat series would divide by zero; centre it instead.
         const y = value => span > 0
@@ -151,26 +152,83 @@ function createSparkline(history, trend, height) {
         const x = i => history.length > 1
             ? (width * i) / (history.length - 1) : width / 2;
 
+        // Hairlines land on a half-pixel so they stay crisp instead of
+        // smearing across two rows of pixels.
+        const crisp = v => Math.round(v) + 0.5;
+
+        // --- Grid ----------------------------------------------------------
+        // Roughly one column every 55px, kept within a sane range so narrow
+        // and wide popups both get a readable number of divisions.
+        const columns = Math.max(3, Math.min(8, Math.round(width / 55)));
+        const rows = 4;
+
+        cr.setLineWidth(1);
+        cr.setDash([], 0);
+        cr.setSourceRGBA(1, 1, 1, 0.07);
+        for (let i = 1; i < columns; i++) {
+            const gx = crisp((width * i) / columns);
+            cr.moveTo(gx, 0);
+            cr.lineTo(gx, h);
+        }
+        for (let i = 1; i < rows; i++) {
+            const gy = crisp((h * i) / rows);
+            cr.moveTo(0, gy);
+            cr.lineTo(width, gy);
+        }
+        cr.stroke();
+
         const trace = () => {
             cr.moveTo(x(0), y(history[0]));
             for (let i = 1; i < history.length; i++)
                 cr.lineTo(x(i), y(history[i]));
         };
 
-        // Area first, so the translucent fill cannot wash out the line.
+        // --- Area fill -----------------------------------------------------
+        // A gradient fades the fill out towards the baseline so the series
+        // line stays the strongest thing on the chart.
         trace();
         cr.lineTo(x(history.length - 1), h);
         cr.lineTo(x(0), h);
         cr.closePath();
-        cr.setSourceRGBA(r, g, b, 0.16);
+        const fill = new Cairo.LinearGradient(0, 0, 0, h);
+        fill.addColorStopRGBA(0, r, g, b, 0.30);
+        fill.addColorStopRGBA(1, r, g, b, 0.02);
+        cr.setSource(fill);
         cr.fill();
 
+        // --- Opening reference ---------------------------------------------
+        // The dashed line is what turns the shape into a chart: everything
+        // above it is a gain on the period, everything below it a loss. On a
+        // flat series it would sit exactly under the trace, so skip it.
+        if (span > 0) {
+            const openY = crisp(y(history[0]));
+            cr.setLineWidth(1);
+            cr.setDash([3, 3], 0);
+            cr.setSourceRGBA(1, 1, 1, 0.22);
+            cr.moveTo(0, openY);
+            cr.lineTo(width, openY);
+            cr.stroke();
+            cr.setDash([], 0);
+        }
+
+        // --- Series --------------------------------------------------------
         trace();
-        cr.setLineWidth(2);
+        cr.setLineWidth(1.5);
         cr.setLineJoin(Cairo.LineJoin.ROUND);
         cr.setLineCap(Cairo.LineCap.ROUND);
         cr.setSourceRGBA(r, g, b, 1);
         cr.stroke();
+
+        // --- Latest value ---------------------------------------------------
+        // Pulled inside the right edge so the marker is not cut in half.
+        const lastX = Math.min(x(history.length - 1), width - 4);
+        const lastY = y(history[history.length - 1]);
+        cr.setSourceRGBA(r, g, b, 0.28);
+        cr.arc(lastX, lastY, 4, 0, 2 * Math.PI);
+        cr.fill();
+        cr.setSourceRGBA(r, g, b, 1);
+        cr.arc(lastX, lastY, 2, 0, 2 * Math.PI);
+        cr.fill();
 
         cr.$dispose();
     });
@@ -215,7 +273,7 @@ class Indicator extends PanelMenu.Button {
 
         for (const key of ['show-label', 'show-change', 'colorize', 'panel-symbol',
             'panel-symbols', 'panel-separator', 'font-scale', 'font-weight',
-            'show-graph', 'graph-height', 'show-icon'])
+            'font-family', 'show-graph', 'graph-height', 'show-icon'])
             this._settingsIds.push(this._settings.connect(`changed::${key}`, () => this._sync()));
 
         // Both change what has to be fetched, not just how it is drawn.
@@ -316,9 +374,20 @@ class Indicator extends PanelMenu.Button {
         this._updateMenu();
     }
 
+    /**
+     * Font family declaration, or an empty string for the system font. St
+     * inherits font-family, so setting it on a container styles its labels.
+     */
+    _fontStyle() {
+        const family = this._settings.get_string('font-family').trim();
+        // Quoted so multi-word families ("DejaVu Sans Mono") survive parsing.
+        return family ? `font-family: "${family.replace(/"/g, '')}";` : '';
+    }
+
     _labelStyle() {
         return `font-size: ${this._settings.get_int('font-scale') / 100}em; ` +
-            `font-weight: ${this._settings.get_int('font-weight')};`;
+            `font-weight: ${this._settings.get_int('font-weight')}; ` +
+            this._fontStyle();
     }
 
     _addLabel(text, styleClass) {
@@ -392,6 +461,7 @@ class Indicator extends PanelMenu.Button {
     _createQuoteItem(symbol) {
         const entry = this._quotes.get(symbol);
         const item = new PopupMenu.PopupBaseMenuItem({style_class: 'toprates-quote'});
+        item.set_style(this._fontStyle());
 
         // Header row on top, price history underneath it.
         const column = new St.BoxLayout({vertical: true, x_expand: true});

@@ -7,7 +7,7 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="$HOME/.local/share/gnome-shell/extensions/$UUID"
 
 # Only the files the shell actually loads; README.md and install.sh stay out.
-SOURCES=(extension.js prefs.js metadata.json stylesheet.css schemas)
+SOURCES=(extension.js prefs.js metadata.json stylesheet.css icons schemas)
 
 rm -rf "$DEST"
 mkdir -p "$DEST"

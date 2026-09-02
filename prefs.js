@@ -1,12 +1,22 @@
 import Adw from 'gi://Adw';
 import Gtk from 'gi://Gtk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Pango from 'gi://Pango';
+
+// Only needed to retag the window on Wayland; missing on X11-only installs.
+const GdkWayland = await import('gi://GdkWayland?version=4.0')
+    .then(m => m.default)
+    .catch(() => null);
 
 // GNOME 50 moved this module; 45-49 expose it at the old path.
 const prefsModule = await import('resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js')
     .catch(() => import('resource:///org/gnome/Shell/Extensions/js/extensionPreferences.js'));
 const {ExtensionPreferences, gettext: _} = prefsModule;
+
+// The app id the prefs window claims, and the desktop entry backing it.
+const APP_ID = 'io.github.hellish.TopRates';
 
 const SEPARATORS = [
     {label: '│  (vertical line)', value: '│'},
@@ -32,9 +42,15 @@ export default class TopRatesPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
+        this._applyWindowIcon(window);
+
         const page = new Adw.PreferencesPage({
             title: _('General'),
             icon_name: 'preferences-system-symbolic',
+            // AdwPreferencesPage packs its groups tight against the window
+            // edges; a little breathing room top and bottom reads better.
+            margin_top: 12,
+            margin_bottom: 12,
         });
         window.add(page);
 
@@ -54,6 +70,72 @@ export default class TopRatesPreferences extends ExtensionPreferences {
 
         this._rebuildSymbolRows(settings);
         this._rebuildPanelRows(settings);
+    }
+
+    // --- Window icon -------------------------------------------------------
+
+    // Two mechanisms, because sessions differ in what they honour:
+    //
+    //  * X11 takes a per-window icon, so pointing the icon theme at our
+    //    bundled icons and naming one is enough.
+    //  * Wayland ignores per-window icons entirely -- mutter implements no
+    //    xdg-toplevel-icon protocol. The shell resolves the icon from the
+    //    toplevel's app id instead, and for every extension's prefs dialog
+    //    that id is org.gnome.Shell.Extensions, hence the generic puzzle
+    //    piece. Claiming an app id of our own, backed by a hidden desktop
+    //    entry, is the only way to change it. The id can only be set once the
+    //    toplevel exists, so it has to wait for the window to be mapped.
+    _applyWindowIcon(window) {
+        const iconPath = this.dir.get_child('icons').get_path();
+        const iconTheme = Gtk.IconTheme.get_for_display(window.get_display());
+        if (!(iconTheme.get_search_path() ?? []).includes(iconPath))
+            iconTheme.add_search_path(iconPath);
+        window.set_icon_name('toprates');
+
+        if (!GdkWayland)
+            return;
+
+        this._ensureDesktopEntry();
+        const mapId = window.connect('map', () => {
+            window.disconnect(mapId);
+            const surface = window.get_surface();
+            if (surface instanceof GdkWayland.WaylandToplevel)
+                surface.set_application_id(APP_ID);
+        });
+    }
+
+    // The desktop entry the shell matches our app id against. It is never
+    // launched and stays hidden: it exists only to lend the window a name and
+    // an icon, the same trick org.gnome.Shell.Extensions.desktop itself uses.
+    _ensureDesktopEntry() {
+        const path = GLib.build_filenamev(
+            [GLib.get_user_data_dir(), 'applications', `${APP_ID}.desktop`]);
+        const icon = this.dir.get_child('icons').get_child('toprates.svg').get_path();
+        const contents = [
+            '[Desktop Entry]',
+            'Type=Application',
+            'Name=TopRates',
+            `Icon=${icon}`,
+            'Exec=false',
+            'NoDisplay=true',
+            'OnlyShowIn=GNOME;',
+            '',
+        ].join('\n');
+
+        try {
+            const [ok, current] = Gio.File.new_for_path(path).load_contents(null);
+            if (ok && new TextDecoder().decode(current) === contents)
+                return;
+        } catch {
+            // Not written yet, or unreadable -- fall through and write it.
+        }
+
+        try {
+            GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o755);
+            GLib.file_set_contents(path, contents);
+        } catch (e) {
+            console.error(`TopRates: could not write ${path}: ${e.message}`);
+        }
     }
 
     // --- Symbols -----------------------------------------------------------
@@ -333,6 +415,8 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         group.add(fontScale);
         settings.bind('font-scale', fontScale, 'value', Gio.SettingsBindFlags.DEFAULT);
 
+        group.add(this._fontFamilyRow(settings));
+
         const weights = [300, 400, 500, 600, 700];
         const fontWeight = new Adw.ComboRow({
             title: _('Font weight'),
@@ -359,6 +443,62 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         });
         group.add(colorize);
         settings.bind('colorize', colorize, 'active', Gio.SettingsBindFlags.DEFAULT);
+    }
+
+    /**
+     * Font family picker. Stored as a plain family name ('' for the system
+     * font) so the value stays readable in dconf and portable between hosts.
+     */
+    _fontFamilyRow(settings) {
+        const row = new Adw.ActionRow({
+            title: _('Font family'),
+            subtitle: _('Used by the panel label and the popup.'),
+        });
+
+        const button = new Gtk.FontDialogButton({
+            dialog: new Gtk.FontDialog({title: _('Font family')}),
+            level: Gtk.FontLevel.FAMILY,
+            valign: Gtk.Align.CENTER,
+        });
+
+        const reset = new Gtk.Button({
+            icon_name: 'edit-clear-symbolic',
+            tooltip_text: _('Use the system font'),
+            valign: Gtk.Align.CENTER,
+            css_classes: ['flat'],
+        });
+
+        // The button has no "unset" state, so showing the stored value has to
+        // fall back to a placeholder; guard against that write looping back.
+        let syncing = false;
+        const show = () => {
+            syncing = true;
+            const family = settings.get_string('font-family').trim();
+            button.set_font_desc(
+                Pango.FontDescription.from_string(family || 'Cantarell'));
+            row.subtitle = family
+                ? _('Used by the panel label and the popup.')
+                : _('System font. Pick one to override it.');
+            reset.sensitive = family !== '';
+            syncing = false;
+        };
+
+        button.connect('notify::font-desc', () => {
+            if (syncing)
+                return;
+            settings.set_string('font-family',
+                button.get_font_desc()?.get_family() ?? '');
+            show();
+        });
+        reset.connect('clicked', () => {
+            settings.set_string('font-family', '');
+            show();
+        });
+        show();
+
+        row.add_suffix(button);
+        row.add_suffix(reset);
+        return row;
     }
 
     // --- Placement ---------------------------------------------------------

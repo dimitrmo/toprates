@@ -30,6 +30,20 @@ make install     # copies into ~/.local/share/gnome-shell/extensions and compile
 
 `./install.sh` does the same thing if you would rather not use make.
 
+Nothing here needs extensions.gnome.org. A GNOME extension is just a directory
+under `~/.local/share/gnome-shell/extensions/<uuid>/`, so a local install is a
+copy plus a compiled schema. To install on a machine that does not have this
+checkout, build the zip here and hand that over:
+
+```bash
+make pack                                                   # builds the zip
+gnome-extensions install --force toprates@hellish.github.io.shell-extension.zip
+```
+
+extensions.gnome.org is only needed to publish — it buys a public listing, the
+one-click browser install and update notifications, at the cost of review. It
+is not a prerequisite for running the extension.
+
 ### Makefile targets
 
 | Target | What it does |
@@ -158,7 +172,31 @@ costs no extra requests — only a slightly larger response.
 | `toprates.svg` | The application icon, 1024 canvas |
 | `toprates-512.png`, `toprates-128.png` | Renders of the above for listings and READMEs |
 
+Keep the `<svg>` element at the very top of the file, directly after the XML
+declaration, and put any comment inside it. Image loaders sniff the first bytes
+of a file to pick a decoder; a comment ahead of the root element pushes `<svg`
+out of that window and the file is rejected with "unrecognised image file
+format" — even though it is perfectly valid SVG and `rsvg-convert` renders it.
+That is silent: the icon simply does not appear.
+
 The panel glyph can be switched off with **Show icon**.
+
+### The preferences window icon
+
+The prefs dialog does not run in its own process — the shell hosts it, so its
+window would inherit `org.gnome.Shell.Extensions.desktop` and show the generic
+puzzle piece. Two mechanisms in `prefs.js` replace it, because sessions differ
+in what they honour:
+
+* **X11** takes a per-window icon: `icons/` is added to the GTK icon theme
+  search path and the window is given the name `toprates`.
+* **Wayland** ignores per-window icons entirely — mutter implements no
+  `xdg-toplevel-icon` protocol, so the shell resolves the icon from the
+  toplevel's app id instead. The window claims the app id
+  `io.github.hellish.TopRates` once it is mapped (the id cannot be set before
+  the toplevel exists), and a hidden desktop entry of the same name is written
+  to `~/.local/share/applications/` to carry the name and icon that the shell
+  then looks up.
 
 ## Other settings
 
@@ -175,6 +213,7 @@ The panel glyph can be switched off with **Show icon**.
 | Show label | `show-label` | boolean | `true` | Panel text |
 | Font size | `font-scale` | int (50–150) | `85` | Panel label size, as a percentage of the top bar default |
 | Font weight | `font-weight` | int (100–900) | `400` | Panel label weight |
+| Font family | `font-family` | string | `''` | Font used by the panel label and the popup; empty means the system font |
 | Show daily change | `show-change` | boolean | `true` | Appends `+0.43%` to the panel label |
 | Colour gains and losses | `colorize` | boolean | `true` | Green up, red down |
 | Panel box | `panel-position` | string | `right` | `left`, `center` or `right` |
@@ -315,5 +354,10 @@ On X11, Looking Glass (`Alt`+`F2`, `lg`) inspects the live actor tree.
 make disable
 make uninstall
 ```
+
+`make uninstall` also removes
+`~/.local/share/applications/io.github.hellish.TopRates.desktop`, the hidden
+entry the prefs window uses for its icon; delete it by hand if the extension
+was installed with `install.sh`.
 
 Then log out and back in (Wayland) or restart the shell (X11).

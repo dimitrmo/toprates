@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- TopRates application icon, drawn in the macOS style: a continuous-corner
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- TopRates application icon, drawn in the macOS style: a continuous-corner
      squircle, a lit gradient body, and a glass quote line floating above it
      with its own soft shadow. Canvas 1024, body 824, the rest is shadow room. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
   <defs>
     <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#3d444e"/>
