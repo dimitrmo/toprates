@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="toprates">
+  <schema id="org.gnome.shell.extensions.toprates"
+          path="/org/gnome/shell/extensions/toprates/">
+    <key name="symbols" type="as">
+      <default>['DOX','VWCE.DE']</default>
+      <summary>Yahoo Finance symbols to follow</summary>
+      <description>Use the exact Yahoo ticker, including the exchange suffix where one applies (VWCE.DE, EURUSD=X, BTC-EUR, ^GSPC).</description>
+    </key>
+    <key name="panel-symbol" type="s">
+      <default>''</default>
+      <summary>Deprecated: single symbol shown in the top bar</summary>
+      <description>Superseded by panel-symbols; migrated on first start and then cleared.</description>
+    </key>
+    <key name="panel-symbols" type="as">
+      <default>[]</default>
+      <summary>Symbols shown in the top bar</summary>
+      <description>Empty means the first symbol in the list. Entries not present in symbols are ignored.</description>
+    </key>
+    <key name="panel-separator" type="s">
+      <default>'|'</default>
+      <summary>Text drawn between symbols in the top bar</summary>
+      <description>Empty means the symbols are separated by spacing alone.</description>
+    </key>
+    <key name="show-graph" type="b">
+      <default>true</default>
+      <summary>Draw a price history graph under every symbol in the popup</summary>
+    </key>
+    <key name="history-range" type="s">
+      <default>'1mo'</default>
+      <summary>Period covered by the history graph</summary>
+      <description>One of 1d, 5d, 1mo, 3mo, 6mo, 1y, 5y.</description>
+    </key>
+    <key name="graph-height" type="i">
+      <range min="20" max="120"/>
+      <default>44</default>
+      <summary>Height of the history graph in pixels</summary>
+    </key>
+    <key name="refresh-interval" type="i">
+      <range min="30" max="3600"/>
+      <default>300</default>
+      <summary>Seconds between quote refreshes</summary>
+    </key>
+    <key name="show-icon" type="b">
+      <default>true</default>
+      <summary>Show the TopRates icon in the top bar</summary>
+    </key>
+    <key name="show-label" type="b">
+      <default>true</default>
+      <summary>Show the panel label</summary>
+    </key>
+    <key name="font-scale" type="i">
+      <range min="50" max="150"/>
+      <default>85</default>
+      <summary>Panel label size as a percentage of the default font size</summary>
+    </key>
+    <key name="font-weight" type="i">
+      <range min="100" max="900"/>
+      <default>400</default>
+      <summary>Panel label font weight</summary>
+    </key>
+    <key name="show-change" type="b">
+      <default>true</default>
+      <summary>Show the daily change percentage in the panel</summary>
+    </key>
+    <key name="colorize" type="b">
+      <default>true</default>
+      <summary>Colour gains green and losses red</summary>
+    </key>
+    <key name="panel-position" type="s">
+      <default>'right'</default>
+      <summary>Panel box: left, center or right</summary>
+    </key>
+    <key name="panel-index" type="i">
+      <default>0</default>
+      <summary>Index within the chosen panel box</summary>
+    </key>
+  </schema>
+</schemalist>
