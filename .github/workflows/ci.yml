@@ -3,15 +3,15 @@ name: CI
 on:
   push:
     branches: ['**']
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
 # A newer push to the same branch makes an in-flight run obsolete, except on
-# tags, where the run produces a release artifact and must finish.
+# master, where the run bumps the version and cuts a release: cancelling it
+# half-way could leave a tag without a release attached to it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   contents: read
@@ -50,10 +50,14 @@ jobs:
       - name: Run test suite
         run: ./tests/run-tests.sh
 
+  # Branch and pull-request builds get a downloadable zip for manual testing but
+  # no version bump. On master the release job below does the packing instead,
+  # so that the zip it publishes is built from the bumped commit.
   pack:
     name: Pack extension zip
     runs-on: ubuntu-latest
     needs: [lint, test]
+    if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/master') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,52 +66,93 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip
 
-      - name: Read extension metadata
-        id: meta
-        run: |
-          {
-            echo "uuid=$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])')"
-            echo "version=$(python3 -c 'import json;print(json.load(open("metadata.json")).get("version-name",""))')"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Build zip
-        run: ./tools/pack.sh --output "dist/${{ steps.meta.outputs.uuid }}.shell-extension.zip"
+        run: ./tools/pack.sh --output "dist/$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])').shell-extension.zip"
 
       # Unpacking here would defeat the purpose: the artifact must stay a single
-      # zip that can be uploaded to extensions.gnome.org as-is, so the whole
-      # dist/ directory is uploaded with compression disabled.
+      # zip that can be uploaded to extensions.gnome.org as-is, so it is
+      # uploaded with compression disabled.
       - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.meta.outputs.uuid }}-${{ steps.meta.outputs.version }}
+          name: shell-extension-zip-${{ github.sha }}
+          path: dist/*.shell-extension.zip
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Bump version and release
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the bump commit pushes as a fast-forward, and so the
+          # release notes can be generated against the previous tag.
+          fetch-depth: 0
+
+      - name: Install GNOME build tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip
+
+      - name: Configure git identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Bump patch version, commit and tag
+        id: bump
+        run: |
+          set -euo pipefail
+          # Another merge can land while this job is running, which would make
+          # the push a non-fast-forward. Rather than failing the release, start
+          # over from whatever is on master now and bump again. The commit and
+          # the tag go up in one --atomic push so a rejected push never leaves a
+          # tag behind pointing at an unreleased commit.
+          for attempt in 1 2 3; do
+            git fetch --tags origin master
+            git reset --hard origin/master
+
+            version="$(./tools/version.sh bump)"
+            git add metadata.json Makefile package.json package-lock.json
+            git commit -m "chore(release): v${version} [skip ci]"
+            git tag -f "v${version}"
+
+            if git push --atomic origin "HEAD:refs/heads/master" "refs/tags/v${version}"; then
+              echo "version=${version}" >> "$GITHUB_OUTPUT"
+              echo "Released v${version}" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            echo "::warning::push rejected on attempt ${attempt}; master moved, retrying"
+          done
+          echo "::error::could not push the version bump after 3 attempts"
+          exit 1
+
+      - name: Build zip
+        run: ./tools/pack.sh --output "dist/$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])').shell-extension.zip"
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shell-extension-zip-v${{ steps.bump.outputs.version }}
           path: dist/*.shell-extension.zip
           compression-level: 0
           if-no-files-found: error
           retention-days: 90
 
-  release:
-    name: Attach zip to release
-    runs-on: ubuntu-latest
-    needs: [pack]
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      # The pack job uploads exactly one artifact; merge-multiple flattens it
-      # into dist/ instead of nesting it under the artifact name.
-      - uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-          path: dist
-
-      - name: Locate the built zip
-        run: ls -l dist
-
-      - name: Create or update the GitHub release
+      - name: Create the GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: v${{ steps.bump.outputs.version }}
           files: dist/*.shell-extension.zip
           generate_release_notes: true
           body: |
-            Upload `*.shell-extension.zip` to
+            Upload the attached `*.shell-extension.zip` to
             https://extensions.gnome.org/upload/ to publish this version.

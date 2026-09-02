@@ -89,6 +89,41 @@ if not json.load(open("metadata.json")).get("version-name"):
     sys.exit("version-name is missing")
 '
 
+check 'version-name is the same in every file that carries it' \
+    python3 -c '
+import json, re, sys
+version = json.load(open("metadata.json"))["version-name"]
+found = {"metadata.json version-name": version}
+
+mk = re.search(r"^VERSION\s*:?=\s*(\S+)", open("Makefile").read(), re.M)
+found["Makefile VERSION"] = mk.group(1) if mk else None
+
+pkg = json.load(open("package.json"))
+found["package.json version"] = pkg.get("version")
+
+try:
+    lock = json.load(open("package-lock.json"))
+except FileNotFoundError:
+    lock = None
+if lock is not None:
+    found["package-lock.json version"] = lock.get("version")
+    if "" in lock.get("packages", {}):
+        found["package-lock.json packages[\"\"]"] = lock["packages"][""].get("version")
+
+drift = {k: v for k, v in found.items() if v != version}
+if drift:
+    sys.exit(f"expected {version!r} everywhere; got {drift} "
+             "(run ./tools/version.sh set " + version + ")")
+'
+
+check 'version-name is a MAJOR.MINOR.PATCH string' \
+    python3 -c '
+import json, re, sys
+version = json.load(open("metadata.json"))["version-name"]
+if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+    sys.exit(f"{version!r} is not MAJOR.MINOR.PATCH, so the CI patch bump cannot parse it")
+'
+
 check 'uuid matches the UUID the Makefile packs under' \
     python3 -c '
 import json, re, sys

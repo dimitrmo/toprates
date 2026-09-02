@@ -7,5 +7,5 @@
   "settings-schema": "org.gnome.shell.extensions.toprates",
   "gettext-domain": "toprates",
   "url": "https://github.com/hellish",
-  "version-name": "2.1"
+  "version-name": "1.0.0"
 }

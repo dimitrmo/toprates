@@ -12,7 +12,7 @@
 #   make uninstall  # remove the installed copy
 
 UUID    := toprates@hellish.github.io
-VERSION := 2.1
+VERSION := 1.0.0
 DOMAIN  := toprates
 DESTDIR := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 SCHEMA  := schemas/org.gnome.shell.extensions.toprates.gschema.xml

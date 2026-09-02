@@ -1,6 +1,6 @@
 {
   "name": "toprates",
-  "version": "2.1.0",
+  "version": "1.0.0",
   "description": "Live stock, ETF, index, currency and crypto quotes in the GNOME top bar",
   "private": true,
   "license": "GPL-2.0-or-later",

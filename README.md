@@ -58,6 +58,8 @@ is not a prerequisite for running the extension.
 | `make prefs` | Open the preferences window |
 | `make run` | Install, then launch a nested GNOME Shell to test in |
 | `make pack` | Build `toprates@hellish.github.io.shell-extension.zip` |
+| `make test` | Run the validation suite (the checks CI runs) |
+| `make lint` | Run ESLint over the GJS sources (needs `npm install` first) |
 | `make logs` | Follow the shell-side log |
 | `make clean` | Remove build artefacts |
 
@@ -321,6 +323,9 @@ po/             Translation template and translations
 locale/         Compiled translations (generated, not committed)
 Makefile        build / install / run / pack targets
 install.sh      Plain-shell equivalent of 'make install'
+tests/          Validation suite run by 'make test' and by CI
+tools/          pack.sh (builds the zip) and version.sh (owns the version)
+.github/        GitHub Actions pipeline
 ```
 
 ## Translations
@@ -341,6 +346,49 @@ make translations         # compile po/*.po into locale/
 `po/el.po` is a machine-drafted Greek starting point covering the short UI
 strings; it wants review by a native speaker. Longer descriptions are left
 untranslated on purpose, so they fall back to English rather than to a guess.
+
+## Continuous integration and releases
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+| Job | What it does |
+| --- | --- |
+| `lint` | `eslint .` over `extension.js` and `prefs.js` |
+| `test` | `tests/run-tests.sh` — metadata, schema, translation and zip-layout checks |
+| `pack` | Builds the zip and uploads it as a run artifact (branches and PRs only) |
+| `release` | On `master` only: bumps the version, tags it, and publishes the zip |
+
+Both `make test` and `make lint` run the same checks locally, so a failure can
+be reproduced without pushing.
+
+### Versioning
+
+`metadata.json`'s `version-name` is the single source of truth. `tools/version.sh`
+keeps the `Makefile`, `package.json` and `package-lock.json` in step with it, and
+the test suite fails if they ever drift apart:
+
+```bash
+./tools/version.sh get          # print the current version
+./tools/version.sh bump         # patch-bump every file
+./tools/version.sh set 1.4.0    # set an exact version, for a minor or major release
+```
+
+Every merge to `master` patch-bumps the version automatically: the pipeline
+commits the bump back as `chore(release): vX.Y.Z [skip ci]`, pushes a matching
+`vX.Y.Z` tag, and attaches the built zip to a GitHub release. Bump the minor or
+major component by hand with `./tools/version.sh set` when a release warrants it;
+the next merge continues patch-bumping from there.
+
+There is deliberately no integer `version` key in `metadata.json`:
+extensions.gnome.org assigns that itself on upload and ignores whatever the
+archive contains.
+
+### Publishing to extensions.gnome.org
+
+Download the zip from the release (or run `make pack`) and upload it at
+<https://extensions.gnome.org/upload/>. The zip is reproducible — the same
+commit always packs to identical bytes — so a local build can be checked against
+a published artifact.
 
 ## Development guidelines
 
