@@ -91,12 +91,9 @@ if not json.load(open("metadata.json")).get("version-name"):
 
 check 'version-name is the same in every file that carries it' \
     python3 -c '
-import json, re, sys
+import json, sys
 version = json.load(open("metadata.json"))["version-name"]
 found = {"metadata.json version-name": version}
-
-mk = re.search(r"^VERSION\s*:?=\s*(\S+)", open("Makefile").read(), re.M)
-found["Makefile VERSION"] = mk.group(1) if mk else None
 
 pkg = json.load(open("package.json"))
 found["package.json version"] = pkg.get("version")
@@ -123,6 +120,28 @@ version = json.load(open("metadata.json"))["version-name"]
 if not re.fullmatch(r"\d+\.\d+\.\d+", version):
     sys.exit(f"{version!r} is not MAJOR.MINOR.PATCH, so the CI patch bump cannot parse it")
 '
+
+check 'Makefile derives VERSION from metadata.json rather than hardcoding it' \
+    python3 -c '
+import re, sys
+m = re.search(r"^VERSION\s*:?=\s*(.+)$", open("Makefile").read(), re.M)
+if not m:
+    sys.exit("Makefile does not define VERSION")
+value = m.group(1).strip()
+if re.fullmatch(r"[0-9][0-9.]*", value):
+    sys.exit(f"Makefile hardcodes VERSION = {value!r}; it must read metadata.json")
+if "metadata.json" not in value:
+    sys.exit(f"Makefile VERSION = {value!r} does not read metadata.json")
+'
+
+# Expanding it for real catches the extraction breaking on a reformatted
+# metadata.json, which reading the assignment alone would not.
+if command -v make >/dev/null 2>&1; then
+    check "make expands VERSION to metadata.json's version-name" \
+        bash -c 'expected="$(python3 -c "import json;print(json.load(open(\"metadata.json\"))[\"version-name\"])")"
+                 actual="$(make -pn 2>/dev/null | sed -n "s/^VERSION *:*= *//p" | head -1)"
+                 [ "$actual" = "$expected" ] || { echo "make VERSION=${actual:-<empty>}, metadata.json=$expected"; exit 1; }'
+fi
 
 check 'uuid matches the UUID the Makefile packs under' \
     python3 -c '

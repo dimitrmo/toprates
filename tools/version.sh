@@ -6,9 +6,10 @@
 #   ./tools/version.sh set 1.2.3    # write an exact version everywhere
 #   ./tools/version.sh bump         # patch-bump everywhere, print the result
 #
-# metadata.json's "version-name" is authoritative; the Makefile, package.json
-# and package-lock.json are kept in step with it, and tests/run-tests.sh fails
-# if they ever drift apart.
+# metadata.json's "version-name" is authoritative; package.json and
+# package-lock.json are kept in step with it, and tests/run-tests.sh fails if
+# they ever drift apart. The Makefile is not written to: it reads the version
+# straight out of metadata.json.
 #
 # Note that metadata.json has no integer "version" key on purpose:
 # extensions.gnome.org assigns that itself on upload and ignores whatever the
@@ -44,7 +45,6 @@ def sub(path, pattern, replacement, count=1):
     p.write_text(new)
 
 sub("metadata.json", r'("version-name"\s*:\s*")[^"]*(")', rf'\g<1>{version}\g<2>')
-sub("Makefile", r'^(VERSION\s*:?=\s*)\S+', rf'\g<1>{version}')
 sub("package.json", r'^(  "version"\s*:\s*")[^"]*(")', rf'\g<1>{version}\g<2>')
 
 # package-lock.json is generated, so rewriting it as JSON is safe. npm keeps the

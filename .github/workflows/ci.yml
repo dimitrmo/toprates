@@ -119,7 +119,7 @@ jobs:
             git reset --hard origin/master
 
             version="$(./tools/version.sh bump)"
-            git add metadata.json Makefile package.json package-lock.json
+            git add metadata.json package.json package-lock.json
             git commit -m "chore(release): v${version} [skip ci]"
             git tag -f "v${version}"
 

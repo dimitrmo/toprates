@@ -6,7 +6,10 @@ separated by a character of your choice; the popup lists every symbol you
 follow with its price, daily change and a price history sparkline, and clicking
 a row opens that symbol's Yahoo Finance page.
 
-<img src="icons/toprates-128.png" width="96" alt="TopRates icon">
+<img src="images/expanded.png" width="440" alt="The TopRates panel indicator showing DOX and VWCE.DE, with the popup open below it listing both symbols with their price, daily change, a three-month sparkline, the last-update time and the Refresh now and Preferences entries">
+
+*The panel indicator and the popup it opens: two followed symbols, each with its
+daily change and a sparkline of the selected history period.*
 
 - **UUID:** `toprates@hellish.github.io`
 - **Supported shells:** GNOME 45, 46, 47, 48, 49, 50 (ESM-based extension API)
@@ -206,6 +209,8 @@ costs no extra requests — only a slightly larger response.
 
 ## Icons
 
+<img src="icons/toprates-128.png" width="96" alt="TopRates application icon">
+
 `icons/` holds the artwork:
 
 | File | Used for |
@@ -318,6 +323,7 @@ prefs.js        Adwaita preferences window, including the symbol-list editor
 metadata.json   UUID, name, supported shell versions, schema id
 stylesheet.css  Panel label, popup rows, sparklines, gain/loss colours
 icons/          Panel glyph and application icon
+images/         Screenshots for this README (not packed into the zip)
 schemas/        GSettings schema source
 po/             Translation template and translations
 locale/         Compiled translations (generated, not committed)
@@ -363,9 +369,10 @@ be reproduced without pushing.
 
 ### Versioning
 
-`metadata.json`'s `version-name` is the single source of truth. `tools/version.sh`
-keeps the `Makefile`, `package.json` and `package-lock.json` in step with it, and
-the test suite fails if they ever drift apart:
+`metadata.json`'s `version-name` is the single source of truth. The `Makefile`
+reads it straight out of that file, `tools/version.sh` keeps `package.json` and
+`package-lock.json` in step with it, and the test suite fails if they ever drift
+apart:
 
 ```bash
 ./tools/version.sh get          # print the current version

@@ -12,8 +12,12 @@
 #   make uninstall  # remove the installed copy
 
 UUID    := toprates@hellish.github.io
-VERSION := 1.0.1
 DOMAIN  := toprates
+
+# metadata.json's "version-name" is the single source of truth for the version;
+# it is deliberately not duplicated here. tools/version.sh writes that file, and
+# CI bumps it without touching this Makefile.
+VERSION := $(shell sed -n 's/.*"version-name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' metadata.json)
 DESTDIR := $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 SCHEMA  := schemas/org.gnome.shell.extensions.toprates.gschema.xml
 
