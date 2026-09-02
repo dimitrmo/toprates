@@ -1,7 +1,5 @@
 locale/
 toprates@hellish.github.io.shell-extension.zip
-toprates@hellish.github.io.shell-extension-legacy.zip
-build/
 node_modules/
 dist/
 __pycache__/

@@ -76,10 +76,12 @@ if not isinstance(versions, list) or not versions:
 bad = [v for v in versions if not isinstance(v, str) or not v.split(".")[0].isdigit()]
 if bad:
     sys.exit(f"not version strings: {bad}")
-# GNOME 45 was the ESM cut-over; these sources cannot load on anything older.
-old = [v for v in versions if int(v.split(".")[0]) < 45]
+# 45 is the hard floor -- it is where the ESM extension API arrived, and these
+# sources are ES modules. 48 is the declared floor, since 48-50 are what the
+# extension is tested against; see "Compatibility" in the README.
+old = [v for v in versions if int(v.split(".")[0]) < 48]
 if old:
-    sys.exit(f"ESM sources cannot run on GNOME {old}")
+    sys.exit(f"GNOME {old} is below the declared floor of 48")
 '
 
 check 'version-name is set for the extensions.gnome.org listing' \
@@ -216,12 +218,11 @@ check 'extension.js exports a default Extension subclass' \
 check 'prefs.js exports a default ExtensionPreferences subclass' \
     grep -qE 'export default class .*extends ExtensionPreferences' prefs.js
 
-# The css-classes construct property is GTK 4.8; the legacy build runs on GNOME
-# 42, which ships 4.6. styled() applies classes the way every GTK 4 release
-# supports. tools/legacy.py fails the build over this too, but catching it here
-# names the fix.
-check 'prefs.js applies CSS classes through styled(), not css_classes:' \
-    bash -c '! grep -n "css_classes[[:space:]]*:" prefs.js'
+# Nothing may reach the shell through the pre-45 imports.* API: GNOME 48 loads
+# extensions as ES modules only, and a stray imports.* would fail at runtime
+# rather than at pack time.
+check 'the sources use the ESM extension API, not imports.*' \
+    bash -c '! grep -nE "\bimports\.(gi|ui|misc|gettext|cairo)\b" extension.js prefs.js'
 
 section 'packaged zip'
 
@@ -246,96 +247,20 @@ if out="$(./tools/pack.sh --output "$ZIP" 2>&1)"; then
     check 'no build leftovers are bundled' \
         bash -c '! unzip -Z1 "$1" | grep -qE "(^|/)(gschemas\.compiled|Makefile|README\.md|node_modules|\.git.*|.*\.po|.*\.pot)$"' _ "$ZIP"
 
-    check 'zip is within the extensions.gnome.org 5 MB upload limit' \
-        bash -c '[ "$(stat -c %s "$1")" -lt 5242880 ]' _ "$ZIP"
+    # gnome-extensions pack stores files only; a directory entry is not
+    # something the review server's walk expects to find.
+    check 'the zip holds no directory entries' \
+        bash -c '! unzip -Z1 "$1" | grep -q "/$"' _ "$ZIP"
+
+    # extensions.gnome.org measures its 5 MB limit against the *uncompressed*
+    # total, not the size of the file being uploaded.
+    check 'zip is within the extensions.gnome.org 5 MB uncompressed limit' \
+        bash -c 'total="$(unzip -l "$1" | tail -1 | awk "{print \$1}")"
+                 [ "$total" -lt 5242880 ] || { echo "$total bytes uncompressed"; exit 1; }' _ "$ZIP"
 else
     fail 'tools/pack.sh builds the zip' "$out"
 fi
 rm -rf "$(dirname "$ZIP")"
-
-section 'legacy build (GNOME 42-44)'
-
-# The pre-45 sources are generated, so what is tested is the transform: that it
-# still recognises the modern header, that what it emits is a script rather
-# than a module, and that the entry points the older loader looks for are there.
-LEGACY_DIR="$(mktemp -d)"
-if out="$(python3 tools/legacy.py --out "$LEGACY_DIR/legacy" 2>&1)"; then
-    ok 'tools/legacy.py generates the pre-45 sources'
-    LEGACY="$LEGACY_DIR/legacy"
-
-    check 'no ESM syntax survives the transform' \
-        bash -c '! grep -nE "^[[:space:]]*(import|export)[[:space:]]|await import" \
-                    "$1/extension.js" "$1/prefs.js"' _ "$LEGACY"
-
-    # GNOME 42-44 call a top-level init() and use its return value as the
-    # extension object; 45+ default-export a class instead.
-    check 'extension.js defines the init() entry point the old loader calls' \
-        grep -qE '^function init\(\)' "$LEGACY/extension.js"
-
-    check 'prefs.js defines init() and fillPreferencesWindow()' \
-        bash -c 'grep -qE "^function init\(\)" "$1/prefs.js" &&
-                 grep -qE "^function fillPreferencesWindow\(window\)" "$1/prefs.js"' _ "$LEGACY"
-
-    check 'the generated sources reach the shell through imports.*' \
-        bash -c 'grep -q "imports.misc.extensionUtils" "$1/extension.js" &&
-                 grep -q "imports.ui.main" "$1/extension.js"' _ "$LEGACY"
-
-    check 'the legacy metadata claims 42-44 and nothing the modern build claims' \
-        python3 -c '
-import json, sys
-modern = json.load(open("metadata.json"))
-legacy = json.load(open(sys.argv[1]))
-if legacy["shell-version"] != ["42", "43", "44"]:
-    sys.exit("legacy shell-version is %s, expected 42-44" % legacy["shell-version"])
-overlap = set(modern["shell-version"]) & set(legacy["shell-version"])
-if overlap:
-    sys.exit(f"both builds claim {sorted(overlap)}; EGO picks one version per shell")
-for key in ("uuid", "version-name", "settings-schema", "gettext-domain"):
-    if modern.get(key) != legacy.get(key):
-        sys.exit(f"{key} differs: {modern.get(key)!r} vs {legacy.get(key)!r}")
-' "$LEGACY/metadata.json"
-
-    # Copied to .cjs because node parses a bare .js file as a module when it
-    # sees module syntax, which would accept the very thing this rules out.
-    if command -v node >/dev/null 2>&1; then
-        check 'the generated sources parse as plain scripts' \
-            bash -c 'cp "$1/extension.js" "$1/ext.cjs"; cp "$1/prefs.js" "$1/prefs.cjs"
-                     node --check "$1/ext.cjs" && node --check "$1/prefs.cjs"' _ "$LEGACY"
-    fi
-
-    # The compatibility layer is the part most likely to be wrong, so it is
-    # instantiated for real. This runs against the installed GTK rather than
-    # 4.6, so it proves the shims construct and that every property the sources
-    # bind to round-trips - not that 42 itself is happy. Needs gjs and a
-    # display, and is skipped (exit 77) without them.
-    if command -v gjs >/dev/null 2>&1; then
-        shim_out="$(python3 tools/legacy.py --self-test 2>&1)"
-        case "$?" in
-            0)  ok 'the widget shims behave like the rows they stand in for' ;;
-            77) printf '%s  -- %s %s%s\n' "$DIM" 'shim checks skipped:' \
-                    "$(printf '%s' "$shim_out" | tail -1)" "$RESET" ;;
-            *)  fail 'the widget shims behave like the rows they stand in for' "$shim_out" ;;
-        esac
-    fi
-
-    LEGACY_ZIP="$LEGACY_DIR/$UUID.shell-extension-legacy.zip"
-    if out="$(./tools/pack.sh --legacy --output "$LEGACY_ZIP" 2>&1)"; then
-        ok 'tools/pack.sh --legacy builds the second zip'
-
-        check 'the legacy zip carries the generated sources at its root' \
-            bash -c 'unzip -p "$1" metadata.json | grep -q "\"42\"" &&
-                     unzip -p "$1" extension.js | grep -q "GENERATED FILE"' _ "$LEGACY_ZIP"
-
-        check 'the legacy zip bundles the schema and translations too' \
-            bash -c 'unzip -Z1 "$1" | grep -qE "schemas/.+\.gschema\.xml$" &&
-                     unzip -Z1 "$1" | grep -qE "locale/.+\.mo$"' _ "$LEGACY_ZIP"
-    else
-        fail 'tools/pack.sh --legacy builds the second zip' "$out"
-    fi
-else
-    fail 'tools/legacy.py generates the pre-45 sources' "$out"
-fi
-rm -rf "$LEGACY_DIR"
 
 printf '\n%s%d passed%s' "$GREEN" "$PASS" "$RESET"
 if [ "$FAIL" -gt 0 ]; then

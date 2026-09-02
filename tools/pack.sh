@@ -3,12 +3,10 @@
 #
 #   ./tools/pack.sh                       # writes <uuid>.shell-extension.zip
 #   ./tools/pack.sh --output /tmp/x.zip   # writes somewhere else
-#   ./tools/pack.sh --legacy              # the GNOME 42-44 build instead
 #
-# --legacy packs the sources tools/legacy.py derives for the pre-45 extension
-# API, with metadata.json advertising 42-44. It is a second upload of the same
-# UUID: extensions.gnome.org keeps one version per shell range, so the two
-# archives coexist as separate versions of one listing.
+# One archive, for the shell versions metadata.json advertises. There is no
+# second build: the sources are ES modules, which is the only extension API
+# GNOME 48 and later have.
 #
 # This produces the same layout as `gnome-extensions pack`, but needs only
 # glib/gettext/zip rather than a GNOME Shell installation, so it runs on a bare
@@ -26,13 +24,11 @@ cd "$ROOT"
 UUID="$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])')"
 DOMAIN="$(python3 -c 'import json;print(json.load(open("metadata.json")).get("gettext-domain",""))')"
 OUTPUT=""
-LEGACY=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         -o|--output) OUTPUT="$2"; shift 2 ;;
-        --legacy) LEGACY=1; shift ;;
-        -h|--help) sed -n '2,19p' "$0" | sed 's/^# \?//'; exit 0 ;;
+        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \?//'; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -40,16 +36,6 @@ done
 # The files the shell actually loads. README.md, the Makefile and the tooling
 # stay out of the archive.
 SOURCES=(metadata.json extension.js prefs.js stylesheet.css icons)
-
-# The legacy build takes its extension.js, prefs.js and metadata.json from the
-# generated tree and everything else -- schema, icons, stylesheet, catalogues --
-# from the working tree unchanged.
-if [ "$LEGACY" -eq 1 ]; then
-    LEGACY_DIR="$(python3 tools/legacy.py --out build/legacy)"
-    SOURCES=("$LEGACY_DIR/metadata.json" "$LEGACY_DIR/extension.js" \
-             "$LEGACY_DIR/prefs.js" stylesheet.css icons)
-    : "${OUTPUT:=$ROOT/$UUID.shell-extension-legacy.zip}"
-fi
 
 : "${OUTPUT:=$ROOT/$UUID.shell-extension.zip}"
 
@@ -98,6 +84,9 @@ rm -f "$OUTPUT"
 [ -n "$SOURCE_DATE_EPOCH" ] || SOURCE_DATE_EPOCH=315532800
 find "$STAGE" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
 
-(cd "$STAGE" && find . -mindepth 1 | LC_ALL=C sort | zip -q -X -@ "$OUTPUT")
+# Only regular files are listed, so the archive holds no directory entries --
+# the same shape `gnome-extensions pack` produces, and what the review server
+# expects to walk.
+(cd "$STAGE" && find . -mindepth 1 -type f | LC_ALL=C sort | zip -q -X -@ "$OUTPUT")
 
 printf 'Built %s (%s bytes)\n' "$OUTPUT" "$(stat -c %s "$OUTPUT")"
