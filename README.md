@@ -12,14 +12,16 @@ a row opens that symbol's Yahoo Finance page.
 daily change and a sparkline of the selected history period.*
 
 - **UUID:** `toprates@hellish.github.io`
-- **Supported shells:** GNOME 45, 46, 47, 48, 49, 50 (ESM-based extension API)
+- **Supported shells:** GNOME 45-50 from these sources (ESM extension API),
+  and GNOME 42-44 from a generated legacy build (see
+  [Supporting GNOME 42-44](#supporting-gnome-42-44))
 - **Session modes:** `user` (not active on the lock screen)
 - **Data source:** `query1.finance.yahoo.com/v8/finance/chart/<symbol>` — public,
   no API key, no account
 
 ## Requirements
 
-- GNOME Shell 45 or newer
+- GNOME Shell 45 or newer, or 42-44 with the legacy build
 - `glib-compile-schemas` (`glib2-devel` on Fedora, `libglib2.0-dev-bin` on
   Debian/Ubuntu)
 - `make` and the `gnome-extensions` CLI (the latter ships with GNOME Shell)
@@ -60,7 +62,10 @@ is not a prerequisite for running the extension.
 | `make enable` / `make disable` | Enable or disable in the current session |
 | `make prefs` | Open the preferences window |
 | `make run` | Install, then launch a nested GNOME Shell to test in |
-| `make pack` | Build `toprates@hellish.github.io.shell-extension.zip` |
+| `make pack` | Build `toprates@hellish.github.io.shell-extension.zip` (GNOME 45-50) |
+| `make pack-legacy` | Build the GNOME 42-44 zip from the generated legacy sources |
+| `make pack-all` | Both of the above |
+| `make legacy` | Generate the pre-45 sources into `build/legacy/` without packing |
 | `make test` | Run the validation suite (the checks CI runs) |
 | `make lint` | Run ESLint over the GJS sources (needs `npm install` first) |
 | `make logs` | Follow the shell-side log |
@@ -330,7 +335,9 @@ locale/         Compiled translations (generated, not committed)
 Makefile        build / install / run / pack targets
 install.sh      Plain-shell equivalent of 'make install'
 tests/          Validation suite run by 'make test' and by CI
-tools/          pack.sh (builds the zip) and version.sh (owns the version)
+tools/          pack.sh (builds the zips), version.sh (owns the version) and
+                legacy.py (derives the GNOME 42-44 sources)
+build/          Generated legacy sources (generated, not committed)
 .github/        GitHub Actions pipeline
 ```
 
@@ -392,10 +399,113 @@ archive contains.
 
 ### Publishing to extensions.gnome.org
 
-Download the zip from the release (or run `make pack`) and upload it at
-<https://extensions.gnome.org/upload/>. The zip is reproducible — the same
-commit always packs to identical bytes — so a local build can be checked against
-a published artifact.
+Download the zips from the release (or run `make pack-all`) and upload them at
+<https://extensions.gnome.org/upload/>. Both carry the same UUID and are
+uploaded as two versions of the one listing — EGO stores a shell-version map per
+version and serves each visitor the newest version their shell matches, so the
+45-50 archive and the 42-44 archive coexist without conflicting. Upload the
+modern one first, so it is the one reviewers see against a current shell. The
+zips are reproducible — the same commit always packs to identical bytes — so a
+local build can be checked against a published artifact.
+
+A freshly uploaded version is **unreviewed, and an unreviewed version is not
+installable**: its page shows "This extension is incompatible with your GNOME
+Shell version" regardless of what `shell-version` says, because EGO answers that
+question from the approved versions only. That message on a just-submitted
+extension means "waiting for review", not "wrong metadata". `make pack` plus
+`gnome-extensions install --force` installs the same archive locally in the
+meantime.
+
+## Supporting GNOME 42-44
+
+GNOME 45 replaced the extension API wholesale. Extensions became ES modules that
+`import` from `gi://` and `resource:///org/gnome/shell/...` and export a default
+class; 42-44 load `extension.js` as a plain script that reads `imports.*` and
+defines a top-level `init()`. The two are mutually exclusive rather than merely
+different — `export` is a syntax error in the older loader — so **one archive
+cannot serve both eras**, no matter what `shell-version` claims.
+
+Rather than fork the sources, the older build is derived from them:
+
+```bash
+make legacy        # writes build/legacy/{extension.js,prefs.js,metadata.json}
+make pack-legacy   # the same, packed into ...shell-extension-legacy.zip
+make pack-all      # both archives
+```
+
+`tools/legacy.py` does the transform. Only two parts of a file are era-specific,
+which is what makes this a transform and not a port:
+
+| Modern source | Legacy build |
+| --- | --- |
+| `import St from 'gi://St'` | `const {St} = imports.gi` |
+| `import Soup from 'gi://Soup?version=3.0'` | `imports.gi.versions.Soup = '3.0'` ahead of the destructure |
+| `import * as Main from 'resource:///…/ui/main.js'` | `const Main = imports.ui.main` |
+| `{Extension, gettext as _}` from the shell | A shim class over `ExtensionUtils`, and `imports.gettext.domain(…)` |
+| `export default class X extends Extension` | `class X extends Extension` plus `function init()` returning an instance |
+| `export default class X extends ExtensionPreferences` | The same, plus top-level `init()` and `fillPreferencesWindow()` |
+| `await import('gi://GdkWayland')` | A `try` block, since there is no top-level `await` |
+
+Everything between the header and the entry point is copied over untouched. The
+shims are named after the real base classes, so even the `extends` clauses stand
+as written.
+
+### Widgets the older stack does not have
+
+Translating the API is the easy half. The harder half is that the preferences
+window is built from widgets that postdate GNOME 44, and a build that only
+renamed the imports would install cleanly and then crash when the window opened:
+
+| Used in `prefs.js` | Arrived in | Legacy build uses |
+| --- | --- | --- |
+| `Adw.SwitchRow` | libadwaita 1.4 (GNOME 45) | `Adw.ActionRow` + `Gtk.Switch`, exposing `active` |
+| `Adw.SpinRow` | libadwaita 1.4 (GNOME 45) | `Adw.ActionRow` + `Gtk.SpinButton`, exposing `value` and `adjustment` |
+| `Adw.EntryRow` | libadwaita 1.2 (GNOME 43) | `Adw.ActionRow` + `Gtk.Entry`, exposing `text` and the `changed`/`apply` signals |
+| `Gtk.FontDialogButton` | GTK 4.10 (GNOME 44) | `Gtk.FontButton` with the older `Gtk.FontChooserLevel` |
+
+Each shim keeps the property and signal names the sources already bind to, so
+the call sites need nothing but their class name rewritten — `settings.bind(key,
+row, 'active', …)` drives the stand-in exactly as it drives the real row.
+
+One thing had to change in the shared sources rather than in the transform: the
+`css-classes` **construct property** is GTK 4.8, so `styled(widget, …classes)`
+applies classes through `add_css_class()` instead, which every GTK 4 release
+has. That is why `prefs.js` reads `styled(new Gtk.Button({…}), 'flat')`.
+
+### What stops this from rotting
+
+Every rewrite is anchored on an exact string and the generator **exits non-zero
+when an anchor is missing**, so a change to the sources that outgrows the
+transform fails the build rather than shipping a zip that cannot load. It also
+refuses outright on a `css_classes:` construct property or on any libadwaita or
+GTK widget from the known-too-new list, naming the file and line:
+
+```
+tools/legacy.py: prefs.js:543: 'Adw.Banner' is a libadwaita widget newer than
+1.1, which is what GNOME 42 ships. The legacy build needs a shim for it in
+tools/legacy.py, or the sources need to avoid it.
+```
+
+`make test` runs the generator, checks that no `import`/`export` survives, that
+the output parses in script mode, that the two builds never advertise
+overlapping shell versions, and — where `gjs` and a display are available —
+instantiates every shim and round-trips each property through a real
+`Gio.Settings`:
+
+```bash
+./tools/legacy.py --self-test     # the shim checks on their own
+./tools/legacy.py --print-shims   # read the compatibility layer
+```
+
+Those checks run against the installed GTK, not 4.6, so they prove the shims
+construct and bind correctly, not that GNOME 42 itself is happy — that still
+wants a 42-44 host, or a VM.
+
+**Why 42 is the floor.** 42 is the first release whose shell links libsoup3, and
+the first to call `fillPreferencesWindow()`. Going back to 40-41 would need a
+libsoup2 request path — `Soup 3.0` cannot even load in a process that has
+libsoup2 — and a `buildPrefsWidget()` fallback, since libadwaita arrived in 42.
+3.36-3.38 would add a GTK3 preferences window on top of that.
 
 ## Development guidelines
 

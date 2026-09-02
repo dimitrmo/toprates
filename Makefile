@@ -7,6 +7,7 @@
 #   make enable     # enable the extension in the current session
 #   make run        # install, then launch a nested GNOME Shell to test in
 #   make pack       # build a distributable shell-extension.zip
+#   make pack-legacy # the same for GNOME 42-44 (pre-45 extension API)
 #   make test       # run the validation suite
 #   make lint       # run ESLint over the GJS sources
 #   make uninstall  # remove the installed copy
@@ -28,6 +29,12 @@ DESKTOP := $(HOME)/.local/share/applications/io.github.hellish.TopRates.desktop
 SOURCES := extension.js prefs.js metadata.json stylesheet.css icons
 ZIP     := $(UUID).shell-extension.zip
 
+# GNOME 42-44 load extensions through imports.* instead of as ES modules, so
+# they need their own archive, generated from these same sources by
+# tools/legacy.py. See "Supporting GNOME 42-44" in the README.
+LEGACY_ZIP := $(UUID).shell-extension-legacy.zip
+LEGACY_DIR := build/legacy
+
 # Translations. locale/ is generated, never committed; the shell reads it from
 # inside the installed extension directory.
 POT     := po/$(DOMAIN).pot
@@ -35,7 +42,8 @@ POFILES := $(wildcard po/*.po)
 MOFILES := $(patsubst po/%.po,locale/%/LC_MESSAGES/$(DOMAIN).mo,$(POFILES))
 
 .PHONY: all schemas translations pot update-po install uninstall reinstall \
-        enable disable prefs pack test lint run logs clean
+        enable disable prefs pack pack-legacy pack-all legacy test lint run \
+        logs clean
 
 all: schemas translations
 
@@ -96,6 +104,18 @@ prefs:
 pack: $(SOURCES) $(SCHEMA)
 	./tools/pack.sh
 
+## The GNOME 42-44 archive, derived from the same sources. Upload it to
+## extensions.gnome.org as a second version of the same UUID.
+pack-legacy: $(SOURCES) $(SCHEMA)
+	./tools/pack.sh --legacy
+
+pack-all: pack pack-legacy
+
+## Just the generated pre-45 sources, without packing them; useful for reading
+## the transform's output or installing it by hand.
+legacy: $(SOURCES)
+	@python3 tools/legacy.py --out $(LEGACY_DIR)
+
 ## The checks CI runs: metadata, schema, translations and zip layout.
 test:
 	./tests/run-tests.sh
@@ -118,5 +138,5 @@ logs:
 	journalctl -f -o cat /usr/bin/gnome-shell
 
 clean:
-	rm -rf locale
-	rm -f schemas/gschemas.compiled $(ZIP)
+	rm -rf locale $(LEGACY_DIR)
+	rm -f schemas/gschemas.compiled $(ZIP) $(LEGACY_ZIP)

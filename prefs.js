@@ -49,6 +49,20 @@ const RANGES = [
     {label: '5 years', value: '5y'},
 ];
 
+/**
+ * Construct a widget, apply CSS classes to it and return it.
+ *
+ * The css-classes *construct property* only arrived in GTK 4.8, while
+ * add_css_class() has been there since 4.0. The legacy build (see the README)
+ * runs on shells as old as GNOME 42, which ships GTK 4.6, so classes are
+ * always applied the older way.
+ */
+function styled(widget, ...classes) {
+    for (const name of classes)
+        widget.add_css_class(name);
+    return widget;
+}
+
 export default class TopRatesPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
@@ -157,12 +171,11 @@ export default class TopRatesPreferences extends ExtensionPreferences {
     // --- Symbols -----------------------------------------------------------
 
     _buildSymbols(page, settings) {
-        const addButton = new Gtk.Button({
+        const addButton = styled(new Gtk.Button({
             icon_name: 'list-add-symbolic',
             tooltip_text: _('Add a symbol'),
             valign: Gtk.Align.CENTER,
-            css_classes: ['flat'],
-        });
+        }), 'flat');
         addButton.connect('clicked', () => {
             this._setSymbols(settings, [...this._symbols(settings), '']);
             // Focus the row that was just appended so it can be typed into.
@@ -199,10 +212,9 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         this._searchRow.add_prefix(new Gtk.Image({icon_name: 'system-search-symbolic'}));
         this._symbolsGroup.add(this._searchRow);
 
-        this._searchList = new Gtk.ListBox({
+        this._searchList = styled(new Gtk.ListBox({
             selection_mode: Gtk.SelectionMode.NONE,
-            css_classes: ['boxed-list'],
-        });
+        }), 'boxed-list');
         this._searchList.connect('row-activated', (_list, row) => {
             if (row._symbol)
                 this._addSearchResult(settings, row._symbol);
@@ -318,22 +330,20 @@ export default class TopRatesPreferences extends ExtensionPreferences {
                 margin_start: 12,
                 margin_end: 12,
             });
-            box.append(new Gtk.Label({
+            box.append(styled(new Gtk.Label({
                 label: quote.symbol,
                 xalign: 0,
-                css_classes: ['heading'],
-            }));
+            }), 'heading'));
 
             const detail = [quote.shortname ?? quote.longname, quote.exchDisp, quote.typeDisp]
                 .filter(part => part)
                 .join(' · ');
             if (detail) {
-                box.append(new Gtk.Label({
+                box.append(styled(new Gtk.Label({
                     label: detail,
                     xalign: 0,
                     ellipsize: Pango.EllipsizeMode.END,
-                    css_classes: ['dim-label', 'caption'],
-                }));
+                }), 'dim-label', 'caption'));
             }
 
             const row = new Gtk.ListBoxRow({activatable: true, child: box});
@@ -348,14 +358,13 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         this._clearSearchList();
         this._searchList.append(new Gtk.ListBoxRow({
             activatable: false,
-            child: new Gtk.Label({
+            child: styled(new Gtk.Label({
                 label: text,
                 margin_top: 12,
                 margin_bottom: 12,
                 margin_start: 12,
                 margin_end: 12,
-                css_classes: ['dim-label'],
-            }),
+            }), 'dim-label'),
         }));
         this._searchPopover.popup();
     }
@@ -442,13 +451,12 @@ export default class TopRatesPreferences extends ExtensionPreferences {
     }
 
     _iconButton(iconName, tooltip, sensitive, onClick) {
-        const button = new Gtk.Button({
+        const button = styled(new Gtk.Button({
             icon_name: iconName,
             tooltip_text: tooltip,
             valign: Gtk.Align.CENTER,
             sensitive,
-            css_classes: ['flat'],
-        });
+        }), 'flat');
         button.connect('clicked', onClick);
         return button;
     }
@@ -673,12 +681,11 @@ export default class TopRatesPreferences extends ExtensionPreferences {
             valign: Gtk.Align.CENTER,
         });
 
-        const reset = new Gtk.Button({
+        const reset = styled(new Gtk.Button({
             icon_name: 'edit-clear-symbolic',
             tooltip_text: _('Use the system font'),
             valign: Gtk.Align.CENTER,
-            css_classes: ['flat'],
-        });
+        }), 'flat');
 
         // The button has no "unset" state, so showing the stored value has to
         // fall back to a placeholder; guard against that write looping back.

@@ -50,11 +50,11 @@ jobs:
       - name: Run test suite
         run: ./tests/run-tests.sh
 
-  # Branch and pull-request builds get a downloadable zip for manual testing but
+  # Branch and pull-request builds get downloadable zips for manual testing but
   # no version bump. On master the release job below does the packing instead,
-  # so that the zip it publishes is built from the bumped commit.
+  # so that the zips it publishes are built from the bumped commit.
   pack:
-    name: Pack extension zip
+    name: Pack extension zips
     runs-on: ubuntu-latest
     needs: [lint, test]
     if: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/master') }}
@@ -66,17 +66,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip
 
-      - name: Build zip
-        run: ./tools/pack.sh --output "dist/$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])').shell-extension.zip"
+      # Two archives: the ES-module build for GNOME 45+ and the imports.*
+      # build tools/legacy.py derives for 42-44. Both carry the same UUID and
+      # are uploaded to extensions.gnome.org as separate versions of it.
+      - name: Build zips
+        run: |
+          uuid="$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])')"
+          ./tools/pack.sh --output "dist/${uuid}.shell-extension.zip"
+          ./tools/pack.sh --legacy --output "dist/${uuid}.shell-extension-legacy.zip"
 
-      # Unpacking here would defeat the purpose: the artifact must stay a single
-      # zip that can be uploaded to extensions.gnome.org as-is, so it is
+      # Unpacking here would defeat the purpose: each artifact must stay a zip
+      # that can be uploaded to extensions.gnome.org as-is, so they are
       # uploaded with compression disabled.
-      - name: Upload zip artifact
+      - name: Upload zip artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: shell-extension-zip-${{ github.sha }}
-          path: dist/*.shell-extension.zip
+          name: shell-extension-zips-${{ github.sha }}
+          path: dist/*.zip
           compression-level: 0
           if-no-files-found: error
           retention-days: 30
@@ -134,14 +140,20 @@ jobs:
           echo "::error::could not push the version bump after 3 attempts"
           exit 1
 
-      - name: Build zip
-        run: ./tools/pack.sh --output "dist/$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])').shell-extension.zip"
+      # Two archives: the ES-module build for GNOME 45+ and the imports.*
+      # build tools/legacy.py derives for 42-44. Both carry the same UUID and
+      # are uploaded to extensions.gnome.org as separate versions of it.
+      - name: Build zips
+        run: |
+          uuid="$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])')"
+          ./tools/pack.sh --output "dist/${uuid}.shell-extension.zip"
+          ./tools/pack.sh --legacy --output "dist/${uuid}.shell-extension-legacy.zip"
 
-      - name: Upload zip artifact
+      - name: Upload zip artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: shell-extension-zip-v${{ steps.bump.outputs.version }}
-          path: dist/*.shell-extension.zip
+          name: shell-extension-zips-v${{ steps.bump.outputs.version }}
+          path: dist/*.zip
           compression-level: 0
           if-no-files-found: error
           retention-days: 90
@@ -151,8 +163,11 @@ jobs:
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: v${{ steps.bump.outputs.version }}
-          files: dist/*.shell-extension.zip
+          files: dist/*.zip
           generate_release_notes: true
           body: |
-            Upload the attached `*.shell-extension.zip` to
-            https://extensions.gnome.org/upload/ to publish this version.
+            Two archives, both to be uploaded to
+            https://extensions.gnome.org/upload/ as versions of the same UUID:
+
+            - `*.shell-extension.zip` — GNOME Shell 45-50 (ES module API)
+            - `*.shell-extension-legacy.zip` — GNOME Shell 42-44 (`imports.*` API)

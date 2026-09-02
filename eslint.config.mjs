@@ -5,7 +5,7 @@ import js from '@eslint/js';
 
 export default [
     {
-        ignores: ['locale/**', 'node_modules/**'],
+        ignores: ['locale/**', 'node_modules/**', 'build/**'],
     },
     js.configs.recommended,
     {
