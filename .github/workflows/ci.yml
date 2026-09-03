@@ -45,8 +45,10 @@ jobs:
       - name: Install GNOME build tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip
+          sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip gjs
 
+      # gjs runs the unit tests; without it run-tests.sh skips that section
+      # rather than failing, which would let a broken calculation through.
       - name: Run test suite
         run: ./tests/run-tests.sh
 

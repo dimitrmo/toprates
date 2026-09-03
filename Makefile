@@ -8,6 +8,7 @@
 #   make run        # install, then launch a nested GNOME Shell to test in
 #   make pack       # build a distributable shell-extension.zip
 #   make test       # run the validation suite
+#   make unit       # run just the finance.js unit tests
 #   make lint       # run ESLint over the GJS sources
 #   make uninstall  # remove the installed copy
 
@@ -36,7 +37,7 @@ POFILES := $(wildcard po/*.po)
 MOFILES := $(patsubst po/%.po,locale/%/LC_MESSAGES/$(DOMAIN).mo,$(POFILES))
 
 .PHONY: all schemas translations pot update-po install uninstall reinstall \
-        enable disable prefs pack test lint run logs clean
+        enable disable prefs pack test unit lint run logs clean
 
 all: schemas translations
 
@@ -97,9 +98,19 @@ prefs:
 pack: $(SOURCES) $(SCHEMA)
 	./tools/pack.sh
 
-## The checks CI runs: metadata, schema, translations and zip layout.
+## The checks CI runs: metadata, schema, translations, unit tests, zip layout.
 test:
 	./tests/run-tests.sh
+
+## Just the unit tests, for a quick loop while editing finance.js. The stub
+## resource stands in for the shell module finance.js imports; see tests/unit.
+unit:
+	@tmp="$$(mktemp -d)"; \
+	glib-compile-resources --sourcedir=tests/unit/stubs \
+	    --target="$$tmp/stubs.gresource" tests/unit/stubs/shell.gresource.xml && \
+	TOPRATES_TEST_STUBS="$$tmp/stubs.gresource" TOPRATES_TEST_COLOR=1 \
+	    gjs -m tests/unit/run.js; \
+	status=$$?; rm -rf "$$tmp"; exit $$status
 
 ## Static analysis of the GJS sources; needs 'npm install' first.
 lint:

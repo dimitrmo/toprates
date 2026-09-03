@@ -22,6 +22,31 @@
       <summary>Text drawn between symbols in the top bar</summary>
       <description>Empty means the symbols are separated by spacing alone.</description>
     </key>
+    <key name="holdings" type="a{ss}">
+      <default>{}</default>
+      <summary>Position held in each symbol</summary>
+      <description>Maps a symbol to "QUANTITY COST", both written with a dot as the decimal mark; the cost is per share and may be left off. A symbol with no entry here is followed but not held.</description>
+    </key>
+    <key name="show-portfolio" type="b">
+      <default>true</default>
+      <summary>Show position values and a portfolio total in the popup</summary>
+      <description>Only has an effect for symbols that carry a holding.</description>
+    </key>
+    <key name="base-currency" type="s">
+      <default>''</default>
+      <summary>Currency the portfolio total is reported in</summary>
+      <description>An ISO code such as EUR or USD. Holdings quoted in another currency are converted through Yahoo's own FX pairs. Empty means no conversion, so a total is only shown while every holding shares one currency.</description>
+    </key>
+    <key name="benchmark" type="s">
+      <default>''</default>
+      <summary>Symbol overlaid on the details chart for comparison</summary>
+      <description>A Yahoo ticker such as ^GSPC or ACWI, rebased to the plotted symbol's first bar. Empty means no overlay.</description>
+    </key>
+    <key name="pause-when-idle" type="b">
+      <default>true</default>
+      <summary>Stop polling while the session is idle</summary>
+      <description>Refreshes resume, immediately if the data has gone stale, as soon as the session is active again.</description>
+    </key>
     <key name="show-graph" type="b">
       <default>true</default>
       <summary>Draw a price history graph under every symbol in the popup</summary>

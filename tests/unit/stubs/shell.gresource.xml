@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maps the stub above onto the path the shell serves its extension API from.
+  Compiled to a temporary file by tests/run-tests.sh; never committed built.
+-->
+<gresources>
+  <gresource prefix="/org/gnome/shell/extensions">
+    <file>extension.js</file>
+  </gresource>
+</gresources>

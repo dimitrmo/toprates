@@ -81,7 +81,9 @@ export default class TopRatesPreferences extends ExtensionPreferences {
 
         this._buildSymbols(page, settings);
         this._buildTopBar(page, settings);
+        this._buildPortfolio(page, settings);
         this._buildGraph(page, settings);
+        this._buildDetails(page, settings);
         this._buildDisplay(page, settings);
         this._buildPlacement(page, settings);
 
@@ -90,6 +92,7 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         const changedId = settings.connect('changed::symbols', () => {
             this._rebuildSymbolRows(settings);
             this._rebuildPanelRows(settings);
+            this._rebuildHoldingRows(settings);
         });
         window.connect('close-request', () => {
             settings.disconnect(changedId);
@@ -100,6 +103,7 @@ export default class TopRatesPreferences extends ExtensionPreferences {
 
         this._rebuildSymbolRows(settings);
         this._rebuildPanelRows(settings);
+        this._rebuildHoldingRows(settings);
     }
 
     // --- Window icon -------------------------------------------------------
@@ -546,6 +550,181 @@ export default class TopRatesPreferences extends ExtensionPreferences {
             this._symbols(settings).filter(s => selected.has(s)));
     }
 
+    // --- Portfolio -----------------------------------------------------------
+
+    _buildPortfolio(page, settings) {
+        this._portfolioGroup = new Adw.PreferencesGroup({
+            title: _('Portfolio'),
+            description: _('A quantity turns a followed symbol into a position: the popup then shows what it is worth, what it made today, and a total across all of them. The cost per share is optional and only buys the unrealised gain.'),
+        });
+        page.add(this._portfolioGroup);
+
+        this._showPortfolioRow = new Adw.SwitchRow({
+            title: _('Show positions and totals'),
+            subtitle: _('Only affects symbols that carry a quantity.'),
+        });
+        settings.bind('show-portfolio', this._showPortfolioRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
+
+        this._baseCurrencyRow = new Adw.EntryRow({
+            title: _('Base currency'),
+            text: settings.get_string('base-currency'),
+            show_apply_button: true,
+        });
+        // Left empty the positions are only added up while they already share
+        // a currency, which is the honest answer without an FX rate.
+        this._baseCurrencyRow.connect('apply', row =>
+            settings.set_string('base-currency', row.text.trim().toUpperCase()));
+
+        this._portfolioEmptyRow = new Adw.ActionRow({
+            title: _('No symbols yet'),
+            subtitle: _('Add one above, then give it a quantity here.'),
+        });
+    }
+
+    /** The settings map, as a plain object; an unreadable key reads as empty. */
+    _holdings(settings) {
+        try {
+            return settings.get_value('holdings').deepUnpack() ?? {};
+        } catch {
+            return {};
+        }
+    }
+
+    _setHolding(settings, symbol, value) {
+        const holdings = this._holdings(settings);
+        if (value)
+            holdings[symbol] = value;
+        else
+            delete holdings[symbol];
+        settings.set_value('holdings', new GLib.Variant('a{ss}', holdings));
+    }
+
+    /**
+     * A typed number, whichever decimal mark the keyboard produced. The value
+     * is stored with a dot, so a portfolio survives a change of locale.
+     */
+    _number(text) {
+        const value = Number.parseFloat(
+            String(text ?? '').replace(',', '.').replace(/\s+/g, ''));
+        return Number.isFinite(value) ? value : NaN;
+    }
+
+    /** One expander per followed symbol, rebuilt whenever the list changes. */
+    _rebuildHoldingRows(settings) {
+        for (const row of this._holdingRows ?? [])
+            this._portfolioGroup.remove(row);
+        if (this._portfolioEmptyRow.get_parent())
+            this._portfolioGroup.remove(this._portfolioEmptyRow);
+        for (const row of [this._baseCurrencyRow, this._showPortfolioRow]) {
+            if (row.get_parent())
+                this._portfolioGroup.remove(row);
+        }
+
+        this._holdingRows = [];
+
+        const symbols = settings.get_strv('symbols')
+            .map(symbol => symbol.trim())
+            .filter(symbol => symbol.length > 0);
+        if (symbols.length === 0) {
+            this._portfolioGroup.add(this._portfolioEmptyRow);
+        } else {
+            for (const symbol of symbols) {
+                const row = this._createHoldingRow(settings, symbol);
+                this._holdingRows.push(row);
+                this._portfolioGroup.add(row);
+            }
+        }
+
+        // The two settings rows belong under the list, not among it.
+        this._portfolioGroup.add(this._baseCurrencyRow);
+        this._portfolioGroup.add(this._showPortfolioRow);
+    }
+
+    _createHoldingRow(settings, symbol) {
+        const stored = String(this._holdings(settings)[symbol] ?? '').trim().split(/\s+/);
+        const row = new Adw.ExpanderRow({title: symbol});
+
+        const quantity = new Adw.EntryRow({
+            title: _('Quantity'),
+            text: stored[0] ?? '',
+            show_apply_button: true,
+        });
+        const cost = new Adw.EntryRow({
+            title: _('Cost per share'),
+            text: stored[1] ?? '',
+            show_apply_button: true,
+        });
+
+        const describe = (held, paid) => {
+            if (!Number.isFinite(held))
+                return _('Not held');
+            return Number.isFinite(paid)
+                ? `${held} @ ${paid}` : String(held);
+        };
+
+        const save = () => {
+            const held = this._number(quantity.text);
+            if (!Number.isFinite(held) || held === 0) {
+                this._setHolding(settings, symbol, '');
+                quantity.text = '';
+                row.subtitle = describe(NaN);
+                return;
+            }
+            const paid = this._number(cost.text);
+            const priced = Number.isFinite(paid) && paid > 0;
+            this._setHolding(settings, symbol, priced ? `${held} ${paid}` : `${held}`);
+            // Echo back what was stored, so a comma typed as the decimal mark
+            // does not read as though it had been kept.
+            quantity.text = String(held);
+            cost.text = priced ? String(paid) : '';
+            row.subtitle = describe(held, priced ? paid : NaN);
+        };
+
+        quantity.connect('apply', save);
+        cost.connect('apply', save);
+
+        const clear = this._iconButton('edit-clear-symbolic', _('Clear the position'), true, () => {
+            quantity.text = '';
+            cost.text = '';
+            save();
+        });
+        row.add_suffix(clear);
+
+        row.add_row(quantity);
+        row.add_row(cost);
+        row.subtitle = describe(this._number(stored[0]), this._number(stored[1]));
+
+        return row;
+    }
+
+    // --- Details window --------------------------------------------------------
+
+    _buildDetails(page, settings) {
+        const group = new Adw.PreferencesGroup({
+            title: _('Details window'),
+            description: _('The window a click on a popup row opens.'),
+        });
+        page.add(group);
+
+        const benchmark = new Adw.EntryRow({
+            title: _('Benchmark symbol'),
+            text: settings.get_string('benchmark'),
+            show_apply_button: true,
+        });
+        benchmark.add_prefix(new Gtk.Image({icon_name: 'view-dual-symbolic'}));
+        benchmark.connect('apply', row =>
+            settings.set_string('benchmark', row.text.trim().toUpperCase()));
+        group.add(benchmark);
+
+        const hint = new Adw.ActionRow({
+            title: _('Drawn over the chart, rebased to its first bar'),
+            subtitle: _('A ticker such as ^GSPC, ^STOXX50E or ACWI. Leave empty for no overlay. It costs one extra request per range.'),
+        });
+        hint.sensitive = false;
+        group.add(hint);
+    }
+
     // --- Graph ---------------------------------------------------------------
 
     _buildGraph(page, settings) {
@@ -610,6 +789,13 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         });
         group.add(interval);
         settings.bind('refresh-interval', interval, 'value', Gio.SettingsBindFlags.DEFAULT);
+
+        const pause = new Adw.SwitchRow({
+            title: _('Pause while idle'),
+            subtitle: _('Stop polling when the session goes idle, and catch up as soon as it is back.'),
+        });
+        group.add(pause);
+        settings.bind('pause-when-idle', pause, 'active', Gio.SettingsBindFlags.DEFAULT);
 
         const showIcon = new Adw.SwitchRow({
             title: _('Show icon'),

@@ -225,6 +225,40 @@ check 'prefs.js exports a default ExtensionPreferences subclass' \
 check 'the sources use the ESM extension API, not imports.*' \
     bash -c '! grep -nE "\bimports\.(gi|ui|misc|gettext|cairo)\b" extension.js prefs.js finance.js widgets.js quoteDetails.js'
 
+section 'unit tests'
+
+# The pure half of finance.js -- the formatters, the analytics and the
+# portfolio arithmetic -- run under plain gjs. finance.js imports the shell's
+# own extension module for gettext, which does not exist outside gnome-shell,
+# so a stub is compiled into a GResource at that path and registered before the
+# module is imported. That keeps the code under test unmodified.
+if command -v gjs >/dev/null 2>&1 && command -v glib-compile-resources >/dev/null 2>&1; then
+    UNIT_DIR="$(mktemp -d)"
+    if out="$(glib-compile-resources --sourcedir=tests/unit/stubs \
+            --target="$UNIT_DIR/stubs.gresource" \
+            tests/unit/stubs/shell.gresource.xml 2>&1)"; then
+        unit_out="$(TOPRATES_TEST_STUBS="$UNIT_DIR/stubs.gresource" \
+            TOPRATES_TEST_COLOR="$([ -t 1 ] && echo 1 || echo 0)" \
+            gjs -m tests/unit/run.js 2>&1)"
+        unit_status=$?
+        # The runner prints one line per case in this suite's own format, then
+        # a tally that is folded into the totals below rather than printed.
+        printf '%s\n' "$unit_out" | grep -v '^# tally '
+        tally="$(printf '%s\n' "$unit_out" | sed -n 's/^# tally //p')"
+        if [ -n "$tally" ]; then
+            PASS=$((PASS + ${tally%% *}))
+            FAIL=$((FAIL + ${tally##* }))
+        else
+            fail 'unit tests ran' "gjs exited $unit_status without a tally"
+        fi
+    else
+        fail 'the shell stubs compile into a gresource' "$out"
+    fi
+    rm -rf "$UNIT_DIR"
+else
+    printf '%s  -- skipped: needs gjs and glib-compile-resources%s\n' "$DIM" "$RESET"
+fi
+
 section 'packaged zip'
 
 ZIP="$(mktemp -d)/$UUID.shell-extension.zip"

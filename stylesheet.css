@@ -35,6 +35,31 @@
     font-size: 0.9em;
 }
 
+/* --- Portfolio ---------------------------------------------------------- */
+
+.toprates-holding {
+    font-size: 0.8em;
+    font-feature-settings: "tnum";
+}
+
+.toprates-position {
+    font-size: 0.8em;
+    font-feature-settings: "tnum";
+    text-align: right;
+}
+
+/* The total belongs to the list above it, so it is set apart by a rule
+   rather than by a gap the popup's own separators already provide. */
+.toprates-portfolio {
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.toprates-light .toprates-portfolio {
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+}
+
 .toprates-up {
     color: #2ec27e;
 }

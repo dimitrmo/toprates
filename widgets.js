@@ -196,8 +196,8 @@ function textWidth(cr, text, font) {
  * the latest price and a crosshair that follows the pointer.
  */
 export function createChart({
-    points, trend, height, previousClose, averages = [], timezone, dateFormat,
-    onHover,
+    points, trend, height, previousClose, averages = [], comparison = null,
+    timezone, dateFormat, onHover,
 }) {
     const area = new St.DrawingArea({
         style_class: 'toprates-chart',
@@ -220,6 +220,11 @@ export function createChart({
     }
     for (const average of averages)
         seen.push(...average.values.filter(v => Number.isFinite(v)));
+    // The benchmark is rebased into this symbol's prices, so it shares the
+    // axis -- but it can still run well outside the price, which is the whole
+    // point of drawing it, and the span has to make room for that.
+    if (comparison?.values)
+        seen.push(...comparison.values.filter(v => Number.isFinite(v)));
     if (Number.isFinite(previousClose))
         seen.push(previousClose);
 
@@ -378,6 +383,31 @@ export function createChart({
             cr.setSourceRGBA(ir, ig, ib, 0.35);
             cr.moveTo(0, refY);
             cr.lineTo(plotRight, refY);
+            cr.stroke();
+            cr.setDash([], 0);
+        }
+
+        // --- Benchmark --------------------------------------------------------
+        // Drawn under the averages and the trace: it is the reference the eye
+        // measures against, not something to read a value off.
+        if (comparison?.values) {
+            cr.setLineWidth(1.4);
+            cr.setDash([5, 3], 0);
+            cr.setSourceRGBA(ir, ig, ib, 0.5);
+            let started = false;
+            for (let i = 0; i < comparison.values.length; i++) {
+                const value = comparison.values[i];
+                if (!Number.isFinite(value)) {
+                    started = false;
+                    continue;
+                }
+                if (started) {
+                    cr.lineTo(x(i), y(value));
+                } else {
+                    cr.moveTo(x(i), y(value));
+                    started = true;
+                }
+            }
             cr.stroke();
             cr.setDash([], 0);
         }

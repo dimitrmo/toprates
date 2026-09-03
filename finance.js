@@ -72,8 +72,22 @@ const NUMBER_FORMATS = new Map();
 // Some markets are quoted in minor units: London in pence, Johannesburg in
 // cents, Tel Aviv in agorot. Intl accepts these codes but renders them with
 // the major unit's symbol, turning 88.5 pence into "£88.50". They are shown
-// as a plain number plus the raw code instead.
-const MINOR_UNIT_CURRENCIES = new Set(['GBp', 'GBX', 'ZAc', 'ILA']);
+// as a plain number plus the raw code instead -- and converted to the major
+// unit before any FX rate is applied, since the pairs quote GBP, not GBp.
+const MINOR_UNITS = {
+    GBp: {code: 'GBP', factor: 100},
+    GBX: {code: 'GBP', factor: 100},
+    ZAc: {code: 'ZAR', factor: 100},
+    ILA: {code: 'ILS', factor: 100},
+};
+
+const MINOR_UNIT_CURRENCIES = new Set(Object.keys(MINOR_UNITS));
+
+/** The major unit a price is really in, and what to divide by to get there. */
+export function majorUnitOf(currency) {
+    const code = (currency ?? '').trim();
+    return MINOR_UNITS[code] ?? {code: code.toUpperCase(), factor: 1};
+}
 
 export function numberFormat(currency, digits) {
     const key = `${currency}/${digits}`;
@@ -133,6 +147,23 @@ export function formatPercent(percent) {
     if (!Number.isFinite(percent))
         return '';
     return `${signOf(percent)}${numberFormat('', 2).format(Math.abs(percent))}%`;
+}
+
+/**
+ * A held quantity: whole shares plain, fractions to as many places as they
+ * were entered with. A price format would print "10.00" for ten shares, or
+ * round a fraction of a bitcoin away entirely.
+ */
+export function formatQuantity(quantity) {
+    if (!Number.isFinite(quantity))
+        return '—';
+    try {
+        return new Intl.NumberFormat(undefined, {
+            minimumFractionDigits: 0, maximumFractionDigits: 8,
+        }).format(quantity);
+    } catch {
+        return String(quantity);
+    }
 }
 
 /** "1.23M" — share counts run to nine digits and would swamp a stat row. */
@@ -521,4 +552,246 @@ export function trailingReturns(points) {
         });
     }
     return rows;
+}
+
+// --- Currency conversion ---------------------------------------------------
+//
+// A portfolio spread over several markets only adds up once every position is
+// expressed in one currency. Yahoo quotes the pairs as ordinary symbols
+// ("EURUSD=X"), so the same chart endpoint answers for them too.
+
+/** Yahoo's ticker for one currency against another. */
+export function fxSymbol(from, to) {
+    return `${from}${to}=X`;
+}
+
+/**
+ * The pairs needed to bring every one of `currencies` into `base`, with the
+ * minor units resolved first: a London holding needs GBPEUR=X, not GBpEUR=X.
+ * Nothing is asked for when the currency already is the base.
+ */
+export function fxSymbolsFor(currencies, base) {
+    const target = (base ?? '').trim().toUpperCase();
+    const wanted = new Set();
+    if (!target)
+        return [];
+    for (const currency of currencies) {
+        const {code} = majorUnitOf(currency);
+        if (code && code !== target)
+            wanted.add(fxSymbol(code, target));
+    }
+    return [...wanted];
+}
+
+/**
+ * `value`, quoted in `from`, expressed in `to`. `rates` is a plain map of the
+ * symbols above to their price; the inverse pair is used when only it is
+ * known, since one request answers both directions. NaN when the rate is
+ * missing, which the caller reports rather than silently dropping.
+ */
+export function convert(value, from, to, rates) {
+    if (!Number.isFinite(value))
+        return NaN;
+
+    const target = (to ?? '').trim().toUpperCase();
+    const {code, factor} = majorUnitOf(from);
+    const major = value / factor;
+    if (!target || !code)
+        return NaN;
+    if (code === target)
+        return major;
+
+    const direct = rates?.[fxSymbol(code, target)];
+    if (Number.isFinite(direct))
+        return major * direct;
+
+    const inverse = rates?.[fxSymbol(target, code)];
+    if (Number.isFinite(inverse) && inverse !== 0)
+        return major / inverse;
+
+    return NaN;
+}
+
+// --- Portfolio -------------------------------------------------------------
+
+/**
+ * One holding, as the settings store it: a quantity and an optional cost per
+ * share, both written with a dot as the decimal mark so the value survives a
+ * change of locale. A zero quantity is not a position.
+ */
+export function parseHolding(value) {
+    const parts = String(value ?? '').trim().split(/\s+/);
+    const quantity = Number.parseFloat(parts[0]);
+    if (!Number.isFinite(quantity) || quantity === 0)
+        return null;
+    const cost = Number.parseFloat(parts[1]);
+    return {quantity, cost: Number.isFinite(cost) && cost > 0 ? cost : NaN};
+}
+
+/** The inverse of parseHolding, for writing the settings key back. */
+export function formatHolding(holding) {
+    if (!holding || !Number.isFinite(holding.quantity) || holding.quantity === 0)
+        return '';
+    const quantity = String(holding.quantity);
+    return Number.isFinite(holding.cost) && holding.cost > 0
+        ? `${quantity} ${holding.cost}` : quantity;
+}
+
+/**
+ * What a holding is worth, in its own currency and in the base one.
+ *
+ * The base figures are NaN when no rate is available, so a total can say how
+ * many positions it managed to count instead of quietly understating itself.
+ */
+export function positionOf(quote, holding, base, rates) {
+    if (!quote || !holding || !Number.isFinite(quote.price))
+        return null;
+
+    const {quantity, cost} = holding;
+    const value = quantity * quote.price;
+    const dayChange = Number.isFinite(quote.change) ? quantity * quote.change : NaN;
+    const invested = Number.isFinite(cost) ? quantity * cost : NaN;
+    const gain = Number.isFinite(invested) ? value - invested : NaN;
+    const gainPercent = Number.isFinite(gain) && invested ? (gain / invested) * 100 : NaN;
+
+    const currency = quote.currency ?? '';
+    const target = (base ?? '').trim().toUpperCase();
+    // With no base currency set, a holding still counts towards a total as
+    // long as every other one is quoted the same way; the caller checks that.
+    const into = target || majorUnitOf(currency).code;
+
+    return {
+        quantity, cost, currency, value, dayChange, invested, gain, gainPercent,
+        base: into,
+        baseValue: convert(value, currency, into, rates),
+        baseDayChange: convert(dayChange, currency, into, rates),
+        baseInvested: convert(invested, currency, into, rates),
+    };
+}
+
+/**
+ * The portfolio line: every position that could be expressed in the base
+ * currency, added up. `missing` counts the ones that could not be, so the
+ * popup can say the total is short rather than print a wrong number.
+ */
+export function portfolioTotals(positions) {
+    let value = 0, dayChange = 0, invested = 0, investedValue = 0;
+    let counted = 0, missing = 0, priced = 0;
+
+    for (const position of positions) {
+        if (!position)
+            continue;
+        if (!Number.isFinite(position.baseValue)) {
+            missing += 1;
+            continue;
+        }
+        value += position.baseValue;
+        counted += 1;
+        if (Number.isFinite(position.baseDayChange))
+            dayChange += position.baseDayChange;
+        // The gain is only over the positions that carry a cost basis; mixing
+        // in the ones that do not would report a loss the size of their value.
+        if (Number.isFinite(position.baseInvested)) {
+            invested += position.baseInvested;
+            investedValue += position.baseValue;
+            priced += 1;
+        }
+    }
+
+    if (counted === 0)
+        return null;
+
+    const previous = value - dayChange;
+    const gain = priced > 0 ? investedValue - invested : NaN;
+    return {
+        value, dayChange, invested, counted, missing, priced, gain,
+        dayPercent: previous ? (dayChange / previous) * 100 : NaN,
+        gainPercent: priced > 0 && invested ? (gain / invested) * 100 : NaN,
+    };
+}
+
+// --- Comparison series -----------------------------------------------------
+
+/** The commonest gap between bars, used as the tolerance when aligning. */
+function medianStep(points) {
+    const steps = [];
+    for (let i = 1; i < points.length; i++)
+        steps.push(points[i].time - points[i - 1].time);
+    if (steps.length === 0)
+        return 0;
+    steps.sort((a, b) => a - b);
+    return steps[Math.floor(steps.length / 2)];
+}
+
+/**
+ * `other` read onto `points`' timeline: for each bar, the other series' last
+ * close at that moment. Two exchanges do not stamp the same trading day
+ * alike -- Yahoo dates a daily bar from the session open, so New York's bar
+ * lands hours after Frankfurt's -- hence the half-bar tolerance, without
+ * which every value would come from the day before. Slots before the other
+ * series begins stay NaN.
+ */
+export function alignTo(points, other) {
+    const aligned = new Array(points?.length ?? 0).fill(NaN);
+    if (!points?.length || !other?.length)
+        return aligned;
+
+    const tolerance = Math.floor(medianStep(points) / 2);
+    let index = 0;
+    let last = NaN;
+    for (let i = 0; i < points.length; i++) {
+        const limit = points[i].time + tolerance;
+        while (index < other.length && other[index].time <= limit) {
+            last = other[index].close;
+            index += 1;
+        }
+        aligned[i] = last;
+    }
+    return aligned;
+}
+
+/**
+ * The benchmark drawn in the plotted symbol's own prices: what the same money
+ * would have done had it tracked the benchmark from the first bar they share.
+ * Null when they share none.
+ *
+ * The two series rarely cover the same ground. A day chart of a European stock
+ * runs from 09:00 local, while New York opens six hours later, so an S&P
+ * overlay exists for the last couple of hours and nothing before. Both moves
+ * are therefore measured over the overlap alone -- `symbolPercent` is the
+ * plotted symbol over exactly the window `percent` covers, so the difference
+ * between them compares like with like rather than a session against an hour.
+ */
+export function overlaySeries(points, other) {
+    const aligned = alignTo(points, other);
+    const start = aligned.findIndex(v => Number.isFinite(v));
+    if (start < 0)
+        return null;
+
+    const from = aligned[start];
+    const anchor = points[start]?.close;
+    if (!from || !anchor)
+        return null;
+
+    const values = aligned.map(v => (Number.isFinite(v) ? (v / from) * anchor : NaN));
+
+    let end = -1;
+    for (let i = aligned.length - 1; i > start; i--) {
+        if (Number.isFinite(aligned[i])) {
+            end = i;
+            break;
+        }
+    }
+
+    const last = end >= 0 ? aligned[end] : NaN;
+    const close = end >= 0 ? points[end].close : NaN;
+
+    return {
+        values,
+        from: points[start].time,
+        to: end >= 0 ? points[end].time : points[start].time,
+        bars: end >= 0 ? end - start + 1 : 1,
+        percent: Number.isFinite(last) ? ((last - from) / from) * 100 : NaN,
+        symbolPercent: Number.isFinite(close) ? ((close - anchor) / anchor) * 100 : NaN,
+    };
 }

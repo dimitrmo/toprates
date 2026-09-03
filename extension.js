@@ -25,7 +25,11 @@ const CLOSED_REFRESH_INTERVAL = 1800;
 const RETRY_DELAYS = [30, 60, 120, 300];
 
 // Bumped when the on-disk shape changes, so an old cache is ignored.
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
+
+// org.gnome.SessionManager.Presence: 0 available, 1 invisible, 2 busy, 3 idle.
+// Only the last one means nobody is looking at the panel.
+const PRESENCE_IDLE = 3;
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
@@ -47,6 +51,10 @@ class Indicator extends PanelMenu.Button {
         this._retries = 0;
         this._marketsClosed = false;
         this._cachedAt = null;
+        // FX pairs, keyed the way Yahoo names them: {'USDEUR=X': 0.92}. Only
+        // fetched for the currencies the held symbols are actually quoted in.
+        this._rates = {};
+        this._idle = false;
         // Details windows outlive the popup that opened them, so they are
         // tracked and closed when the extension goes away under them.
         this._dialogs = new Set();
@@ -74,7 +82,8 @@ class Indicator extends PanelMenu.Button {
 
         for (const key of ['show-label', 'show-change', 'colorize', 'panel-symbol',
             'panel-symbols', 'panel-separator', 'font-scale', 'font-weight',
-            'font-family', 'show-graph', 'graph-height', 'show-icon'])
+            'font-family', 'show-graph', 'graph-height', 'show-icon',
+            'show-portfolio'])
             this._settingsIds.push(this._settings.connect(`changed::${key}`, () => this._sync()));
 
         // Both change what has to be fetched, not just how it is drawn.
@@ -82,6 +91,18 @@ class Indicator extends PanelMenu.Button {
             this._settingsIds.push(this._settings.connect(`changed::${key}`, () => this._refresh()));
         this._settingsIds.push(
             this._settings.connect('changed::refresh-interval', () => this._scheduleRefresh()));
+
+        // A new holding, or a new base currency, can want a pair that has
+        // never been fetched; the rest of the round is already in hand.
+        for (const key of ['holdings', 'base-currency']) {
+            this._settingsIds.push(this._settings.connect(`changed::${key}`, () => {
+                this._sync();
+                this._refreshRates(this._cancellable);
+            }));
+        }
+
+        this._settingsIds.push(this._settings.connect('changed::pause-when-idle',
+            () => this._applyPause()));
 
         this.connect('style-changed', () => this._updateThemeVariant());
 
@@ -93,9 +114,79 @@ class Indicator extends PanelMenu.Button {
                 this._refresh();
         });
 
+        this._watchPresence();
+
         this._loadCache();
         this._sync();
         this._refresh();
+    }
+
+    // --- Idle ------------------------------------------------------------
+
+    /**
+     * Nobody is watching a panel on an idle session, and the lock screen is
+     * already covered: the extension declares the `user` session mode only, so
+     * the shell disables it outright when the screen locks. This closes the
+     * other half, where the session sits unlocked and untouched for hours.
+     */
+    _watchPresence() {
+        Gio.DBusProxy.new(
+            Gio.DBus.session, Gio.DBusProxyFlags.NONE, null,
+            'org.gnome.SessionManager', '/org/gnome/SessionManager/Presence',
+            'org.gnome.SessionManager.Presence', null,
+            (_source, result) => {
+                if (this._destroyed)
+                    return;
+                try {
+                    this._presence = Gio.DBusProxy.new_finish(result);
+                } catch (e) {
+                    // No session manager to ask: keep polling as before.
+                    console.debug(`TopRates: presence unavailable: ${e.message}`);
+                    return;
+                }
+                this._presenceId = this._presence.connect('g-signal',
+                    (_proxy, _sender, signal, params) => {
+                        if (signal === 'StatusChanged')
+                            this._onPresence(params.deepUnpack()[0]);
+                    });
+                this._onPresence(
+                    this._presence.get_cached_property('status')?.deepUnpack());
+            });
+    }
+
+    _onPresence(status) {
+        const idle = status === PRESENCE_IDLE;
+        if (idle === this._idle)
+            return;
+        this._idle = idle;
+        this._applyPause();
+    }
+
+    _paused() {
+        return this._idle && this._settings.get_boolean('pause-when-idle');
+    }
+
+    /** Drop the pending timer while paused; catch up the moment we are not. */
+    _applyPause() {
+        if (this._destroyed)
+            return;
+
+        if (this._paused()) {
+            if (this._timeoutId) {
+                GLib.Source.remove(this._timeoutId);
+                this._timeoutId = 0;
+            }
+            this._updateStatus();
+            return;
+        }
+
+        // Hours can have passed, so this is the same catch-up the network
+        // monitor does: refresh when the data has gone stale, otherwise just
+        // put the timer back.
+        if (this._isStale() && !this._refreshing)
+            this._refresh();
+        else
+            this._scheduleRefresh();
     }
 
     // --- Theme ---------------------------------------------------------
@@ -180,6 +271,71 @@ class Indicator extends PanelMenu.Button {
         if (preferred.length > 0)
             return symbols.filter(s => preferred.includes(s));
         return symbols.length > 0 ? [symbols[0]] : [];
+    }
+
+    /** The held positions, keyed the way the settings spell the symbol. */
+    _holdings() {
+        const holdings = new Map();
+        let stored;
+        try {
+            stored = this._settings.get_value('holdings').deepUnpack();
+        } catch {
+            return holdings;     // an unreadable key is an empty portfolio
+        }
+        for (const [symbol, value] of Object.entries(stored ?? {})) {
+            const holding = Finance.parseHolding(value);
+            if (holding)
+                holdings.set(symbol.trim().toUpperCase(), holding);
+        }
+        return holdings;
+    }
+
+    _baseCurrency() {
+        return this._settings.get_string('base-currency').trim().toUpperCase();
+    }
+
+    /**
+     * One position per held symbol that has a price, in the order of the
+     * followed list. Symbols without a holding are simply not in it.
+     */
+    _positions() {
+        const holdings = this._holdings();
+        if (holdings.size === 0)
+            return new Map();
+
+        const base = this._baseCurrency();
+        const positions = new Map();
+        for (const symbol of this._symbols()) {
+            const holding = holdings.get(symbol.toUpperCase());
+            if (!holding)
+                continue;
+            const position = Finance.positionOf(
+                this._quotes.get(symbol)?.quote, holding, base, this._rates);
+            if (position)
+                positions.set(symbol, position);
+        }
+        return positions;
+    }
+
+    /**
+     * The totals line, or null when there is nothing to add up. Without a base
+     * currency the positions are only summed while they already share one:
+     * adding dollars to euros would print a number that means nothing.
+     */
+    _portfolio(positions) {
+        if (positions.size === 0 || !this._settings.get_boolean('show-portfolio'))
+            return null;
+
+        const base = this._baseCurrency();
+        const currencies = new Set([...positions.values()]
+            .map(position => Finance.majorUnitOf(position.currency).code));
+        if (!base && currencies.size !== 1)
+            return null;
+
+        const totals = Finance.portfolioTotals(positions.values());
+        if (!totals)
+            return null;
+        return {...totals, currency: base || [...currencies][0]};
     }
 
     _historyRange() {
@@ -318,11 +474,16 @@ class Indicator extends PanelMenu.Button {
             return;
         }
 
+        const positions = this._positions();
         for (const symbol of symbols)
-            this._quoteSection.addMenuItem(this._createQuoteItem(symbol));
+            this._quoteSection.addMenuItem(this._createQuoteItem(symbol, positions.get(symbol)));
+
+        const portfolio = this._portfolio(positions);
+        if (portfolio)
+            this._quoteSection.addMenuItem(this._createPortfolioItem(portfolio));
     }
 
-    _createQuoteItem(symbol) {
+    _createQuoteItem(symbol, position) {
         const entry = this._quotes.get(symbol);
         const item = new PopupMenu.PopupBaseMenuItem({style_class: 'toprates-quote'});
         item.set_style(this._fontStyle());
@@ -336,6 +497,18 @@ class Indicator extends PanelMenu.Button {
             text: symbol,
             style_class: 'toprates-symbol',
         }));
+        // What is held, where the eye is already reading the symbol: "10 @
+        // 142.30" is the position, not another number about the instrument.
+        if (position && this._settings.get_boolean('show-portfolio')) {
+            const cost = Number.isFinite(position.cost)
+                ? ` @ ${Finance.formatBare(position.cost)}` : '';
+            nameBox.add_child(new St.Label({
+                text: `${Finance.formatQuantity(position.quantity)}${cost}`,
+                style_class: 'toprates-holding',
+                opacity: Widgets.FAINT_OPACITY,
+            }));
+        }
+
         const subtitle = entry?.quote?.name || entry?.quote?.exchange || '';
         if (subtitle) {
             nameBox.add_child(new St.Label({
@@ -381,6 +554,18 @@ class Indicator extends PanelMenu.Button {
                     style_class: `toprates-change ${this._changeStyle(percent)}`,
                 }));
             }
+
+            if (position && this._settings.get_boolean('show-portfolio')) {
+                const gain = Finance.formatPercent(position.gainPercent);
+                valueBox.add_child(new St.Label({
+                    text: `${Finance.formatPrice(position.value, currency)}` +
+                        (gain ? `  ·  ${gain}` : ''),
+                    style_class: `toprates-position ${
+                        Number.isFinite(position.gainPercent)
+                            ? this._changeStyle(position.gainPercent) : ''}`,
+                    opacity: Widgets.MUTED_OPACITY,
+                }));
+            }
         }
         header.add_child(valueBox);
         column.add_child(header);
@@ -393,6 +578,66 @@ class Indicator extends PanelMenu.Button {
 
         item.connect('activate', () => this._openDetails(symbol));
 
+        return item;
+    }
+
+    /** The portfolio line under the symbols: what the whole lot is worth. */
+    _createPortfolioItem(portfolio) {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            style_class: 'toprates-portfolio',
+            reactive: false,
+        });
+        item.set_style(this._fontStyle());
+
+        const row = new St.BoxLayout({x_expand: true});
+        const left = new St.BoxLayout({vertical: true, x_expand: true});
+        left.add_child(new St.Label({
+            text: _('Portfolio'),
+            style_class: 'toprates-symbol',
+        }));
+
+        // A total that had to leave positions out says so: silently short is
+        // worse than visibly incomplete.
+        const counted = portfolio.missing > 0
+            ? `${portfolio.counted}/${portfolio.counted + portfolio.missing} ${_('positions')}`
+            : `${portfolio.counted} ${_('positions')}`;
+        left.add_child(new St.Label({
+            text: portfolio.missing > 0
+                ? `${counted}  ·  ${_('no rate for the rest')}` : counted,
+            style_class: 'toprates-subtitle',
+            opacity: Widgets.MUTED_OPACITY,
+        }));
+        row.add_child(left);
+
+        const right = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.END});
+        right.add_child(new St.Label({
+            text: Finance.formatPrice(portfolio.value, portfolio.currency),
+            style_class: 'toprates-price',
+        }));
+
+        const day = Finance.formatChange(portfolio.dayChange);
+        const dayPercent = Finance.formatPercent(portfolio.dayPercent);
+        if (day) {
+            right.add_child(new St.Label({
+                text: `${day}${dayPercent ? ` (${dayPercent})` : ''} ${_('today')}`,
+                style_class: `toprates-change ${this._changeStyle(portfolio.dayPercent)}`,
+            }));
+        }
+
+        // Only the positions carrying a cost basis have an unrealised gain,
+        // so the row is left off entirely rather than shown as zero.
+        if (portfolio.priced > 0 && Number.isFinite(portfolio.gain)) {
+            const gain = Finance.formatChange(portfolio.gain);
+            const gainPercent = Finance.formatPercent(portfolio.gainPercent);
+            right.add_child(new St.Label({
+                text: `${gain}${gainPercent ? ` (${gainPercent})` : ''} ${_('total')}`,
+                style_class: `toprates-position ${this._changeStyle(portfolio.gainPercent)}`,
+                opacity: Widgets.MUTED_OPACITY,
+            }));
+        }
+        row.add_child(right);
+
+        item.add_child(row);
         return item;
     }
 
@@ -464,6 +709,8 @@ class Indicator extends PanelMenu.Button {
             parts.push(`${this._failures} ${_('failed')}`);
         if (this._marketsClosed)
             parts.push(_('markets closed'));
+        if (this._paused())
+            parts.push(_('paused while idle'));
         this._setStatus(parts.join(' · '));
     }
 
@@ -521,6 +768,11 @@ class Indicator extends PanelMenu.Button {
             });
         }
 
+        // Rates move slowly enough that yesterday's are a better opening
+        // total than none at all; the next round replaces them.
+        if (payload.rates && typeof payload.rates === 'object')
+            this._rates = {...payload.rates};
+
         if (Number.isFinite(payload.savedAt))
             this._cachedAt = GLib.DateTime.new_from_unix_local(payload.savedAt);
     }
@@ -538,6 +790,7 @@ class Indicator extends PanelMenu.Button {
             version: CACHE_VERSION,
             savedAt: Math.floor(Date.now() / 1000),
             range: this._historyRange(),
+            rates: this._rates,
             quotes,
         });
 
@@ -625,6 +878,67 @@ class Indicator extends PanelMenu.Button {
 
         this._sync();
         this._scheduleRefresh();
+
+        // Deliberately not awaited: the panel is already up to date, and the
+        // rates only decide what the portfolio total says. It syncs again by
+        // itself when they land.
+        this._refreshRates(cancellable);
+    }
+
+    /**
+     * The FX pairs the held positions need to reach the base currency, fetched
+     * through the same endpoint as everything else. Nothing is requested when
+     * no holding is quoted in a foreign currency, which is the common case.
+     */
+    async _refreshRates(cancellable) {
+        if (this._destroyed)
+            return;
+
+        const holdings = this._holdings();
+        const currencies = new Set();
+        for (const symbol of this._symbols()) {
+            if (!holdings.has(symbol.toUpperCase()))
+                continue;
+            const currency = this._quotes.get(symbol)?.quote?.currency;
+            if (currency)
+                currencies.add(currency);
+        }
+
+        const pairs = Finance.fxSymbolsFor(currencies, this._baseCurrency());
+        if (pairs.length === 0) {
+            if (Object.keys(this._rates).length > 0) {
+                this._rates = {};
+                this._sync();
+            }
+            return;
+        }
+
+        const results = await Promise.allSettled(pairs.map(
+            pair => this._finance.fetchQuote(pair, '1d', cancellable)));
+
+        if (this._destroyed || cancellable?.is_cancelled() ||
+            (cancellable && cancellable !== this._cancellable))
+            return;
+
+        // A pair that failed keeps whatever rate it had: an old rate converts
+        // better than no rate, and the position would otherwise leave the
+        // total on the next round.
+        const rates = {...this._rates};
+        let landed = 0;
+        pairs.forEach((pair, i) => {
+            const result = results[i];
+            if (result.status === 'fulfilled' && Number.isFinite(result.value.price)) {
+                rates[pair] = result.value.price;
+                landed += 1;
+            }
+        });
+
+        if (landed === 0)
+            return;
+
+        this._rates = rates;
+        this._saveCache();
+        this._sync();
     }
 
     /**
@@ -650,7 +964,9 @@ class Indicator extends PanelMenu.Button {
             GLib.Source.remove(this._timeoutId);
             this._timeoutId = 0;
         }
-        if (this._destroyed)
+        // Booking nothing is what pauses the polling; _applyPause books the
+        // next round again when the session comes back.
+        if (this._destroyed || this._paused())
             return;
 
         this._timeoutId = GLib.timeout_add_seconds(
@@ -679,6 +995,12 @@ class Indicator extends PanelMenu.Button {
             this._networkId = 0;
         }
         this._network = null;
+
+        if (this._presenceId) {
+            this._presence.disconnect(this._presenceId);
+            this._presenceId = 0;
+        }
+        this._presence = null;
 
         for (const id of this._settingsIds)
             this._settings.disconnect(id);

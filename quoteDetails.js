@@ -127,6 +127,9 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         // comes back, so the window never opens empty.
         this._detail = quote ? {...quote, points: [], interval: ''} : null;
         this._longSeries = null;
+        // The benchmark for the range on screen, refetched with it: the two
+        // series have to be cut the same way to be laid over one another.
+        this._comparison = null;
         this._cancellable = null;
         this._timeoutId = 0;
         this._restoreId = 0;
@@ -396,11 +399,22 @@ class QuoteDetails extends ModalDialog.ModalDialog {
             : this._finance.fetchSeries(this._symbol, RETURNS_RANGE, RETURNS_INTERVAL,
                 cancellable).catch(() => []);
 
-        Promise.all([detail, series]).then(([loaded, points]) => {
+        // A second request, and only when a benchmark is configured. It is
+        // cut at the same range so the two series line up; a failure costs
+        // the overlay and nothing else.
+        const benchmark = this._benchmarkSymbol();
+        const comparison = benchmark
+            ? this._finance.fetchDetail(benchmark, range, cancellable)
+                .then(loaded => ({symbol: benchmark, detail: loaded}))
+                .catch(() => null)
+            : Promise.resolve(null);
+
+        Promise.all([detail, series, comparison]).then(([loaded, points, against]) => {
             if (cancellable.is_cancelled() || cancellable !== this._cancellable)
                 return;
             this._detail = loaded;
             this._longSeries = points;
+            this._comparison = against;
             this._error = null;
             this._lastUpdate = GLib.DateTime.new_now_local();
             this._setLoading(false);
@@ -445,6 +459,14 @@ class QuoteDetails extends ModalDialog.ModalDialog {
 
     _colorize() {
         return this._settings.get_boolean('colorize');
+    }
+
+    /** The configured benchmark, unless it is the symbol already plotted. */
+    _benchmarkSymbol() {
+        const benchmark = this._settings.get_string('benchmark').trim().toUpperCase();
+        if (!benchmark || benchmark === this._symbol.toUpperCase())
+            return '';
+        return benchmark;
     }
 
     _changeStyle(percent) {
@@ -616,12 +638,27 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         if (this._view === HISTORY)
             return [this._historySection(detail)];
 
+        const overlay = this._overlay(detail);
         return [
-            this._chartSection(detail, stats),
-            this._summarySection(detail, stats),
+            this._chartSection(detail, stats, overlay),
+            this._summarySection(detail, stats, overlay),
             this._statsSection(detail, stats),
             this._rangeMeterSection(detail),
         ];
+    }
+
+    /**
+     * The benchmark rebased onto this symbol's first bar, or null when none is
+     * configured, its request failed, or the two series never overlap.
+     */
+    _overlay(detail) {
+        const against = this._comparison;
+        if (!against?.detail?.points?.length)
+            return null;
+        const series = Finance.overlaySeries(detail.points, against.detail.points);
+        if (!series)
+            return null;
+        return {...series, symbol: against.symbol};
     }
 
     _restoreOffset(offset) {
@@ -638,7 +675,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         });
     }
 
-    _chartSection(detail, stats) {
+    _chartSection(detail, stats, overlay = null) {
         const box = section(null);
         const formats = this._formats();
         const timezone = this._timezone();
@@ -673,6 +710,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
             height: CHART_HEIGHT,
             previousClose: detail.chartPreviousClose ?? detail.previous,
             averages,
+            comparison: overlay,
             timezone,
             dateFormat: formats.axis,
             onHover: point => {
@@ -701,6 +739,16 @@ class QuoteDetails extends ModalDialog.ModalDialog {
                 opacity: Widgets.FAINT_OPACITY,
             }));
         }
+        if (overlay) {
+            // The benchmark's own move over the range, so the dashed line is
+            // readable as a number and not only as a shape.
+            const move = Finance.formatPercent(overlay.percent);
+            legend.add_child(new St.Label({
+                text: `┄ ${overlay.symbol}${move ? ` ${move}` : ''}`,
+                style_class: 'toprates-legend-item',
+                opacity: Widgets.MUTED_OPACITY,
+            }));
+        }
         legend.add_child(new St.Label({
             text: `▁ ${_('Volume')}`,
             style_class: 'toprates-legend-item',
@@ -714,7 +762,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
     }
 
     /** The chips under the chart: what the selected range actually did. */
-    _summarySection(detail, stats) {
+    _summarySection(detail, stats, overlay = null) {
         const box = new St.BoxLayout({
             x_expand: true,
             style_class: 'toprates-summary',
@@ -746,6 +794,16 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         chip(_('Period average'), Finance.formatBare(stats.average));
         if (Number.isFinite(stats.volumeAverage) && stats.volumeAverage > 0)
             chip(_('Avg volume'), Finance.formatVolume(stats.volumeAverage));
+        // Both moves come out of the window the two series share, which on a
+        // day chart of a European stock is the couple of hours New York was
+        // also open: the gap between them is what holding this rather than the
+        // benchmark was worth over exactly that stretch.
+        if (overlay && Number.isFinite(overlay.percent) &&
+            Number.isFinite(overlay.symbolPercent)) {
+            const relative = overlay.symbolPercent - overlay.percent;
+            chip(`${_('vs')} ${overlay.symbol}`,
+                Finance.formatPercent(relative), this._changeStyle(relative));
+        }
 
         return box;
     }
@@ -1000,6 +1058,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         this._settings = null;
         this._detail = null;
         this._longSeries = null;
+        this._comparison = null;
         this._tabs?.clear();
         this._views?.clear();
     }

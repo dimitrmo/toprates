@@ -7,6 +7,9 @@ follow with its price, daily change and a price history sparkline, and clicking
 a row opens a details window inside the shell — chart, key statistics, trailing
 returns and the historical bars, without leaving the desktop for a browser.
 
+Give a symbol a quantity and it becomes a position: the popup then values it,
+adds the lot up in a currency of your choosing, and says what it made today.
+
 <img src="images/expanded.png" width="440" alt="The TopRates panel indicator showing DOX and VWCE.DE, with the popup open below it listing both symbols with their price, daily change, a three-month sparkline, the last-update time and the Refresh now and Preferences entries">
 
 *The panel indicator and the popup it opens: two followed symbols, each with its
@@ -63,6 +66,7 @@ is not a prerequisite for running the extension.
 | `make run` | Install, then launch a nested GNOME Shell to test in |
 | `make pack` | Build `toprates@hellish.github.io.shell-extension.zip` (GNOME 48-50) |
 | `make test` | Run the validation suite (the checks CI runs) |
+| `make unit` | Run just the `finance.js` unit tests |
 | `make lint` | Run ESLint over the GJS sources (needs `npm install` first) |
 | `make logs` | Follow the shell-side log |
 | `make clean` | Remove build artefacts |
@@ -138,6 +142,50 @@ If a ticker is wrong the row shows the error (`HTTP 404`) instead of a price;
 the other symbols keep updating. A symbol that fails *after* it has worked
 keeps its last known price, dimmed, rather than dropping back to an error.
 
+## Portfolio
+
+A followed symbol becomes a *position* the moment it is given a quantity, under
+**Portfolio** in the preferences. The popup then carries three more numbers: the
+quantity under the ticker, what the position is worth beside the price, and a
+total line under the whole list.
+
+- **Quantity** is what turns the row into a position. Fractions are fine — a
+  third of a bitcoin, a partial share — and a negative quantity is a short.
+- **Cost per share** is optional. It buys the unrealised gain, in money and in
+  percent; without it the position is still valued, just not judged.
+- Both are stored with a dot as the decimal mark, whichever mark was typed, so
+  a portfolio survives a change of locale.
+
+The total says how many positions went into it. One that could not be converted
+is *counted out and reported*, never quietly dropped into the sum:
+
+```
+Portfolio                                    12,480.55 €
+3 positions · no rate for the rest      +64.10 (+0.52%) today
+                                      +1,205.40 (+10.7%) total
+```
+
+Today's move covers every position in the total. The unrealised gain covers only
+the ones that carry a cost basis — mixing the others in would report their whole
+value as a loss.
+
+### Base currency
+
+Positions in different currencies only add up once they share one. **Base
+currency** takes an ISO code (`EUR`, `USD`, `CHF`) and converts through Yahoo's
+own FX pairs — `USDEUR=X` and friends, the same key-free endpoint everything
+else uses. One request per foreign currency per round, and none at all when
+every holding is already quoted in the base.
+
+Left empty, no conversion happens and the total only appears while every
+position shares a currency. Markets quoted in minor units are resolved first:
+a London holding in `GBp` is converted through `GBPEUR=X`, not through a pair
+that does not exist.
+
+A pair that fails keeps its last rate rather than dropping the position out of
+the total, and the rates are cached alongside the quotes so the first total
+after login is a real number.
+
 ## Prices, currencies and locale
 
 Prices are formatted with `Intl.NumberFormat`, so grouping and decimal marks
@@ -170,6 +218,23 @@ A round in which every symbol fails is retried on a backoff — 30s, 60s, 120s,
 300s, never slower than the configured interval — and the extension watches
 `Gio.NetworkMonitor`, so reconnecting triggers an immediate retry rather than
 a wait for the next tick.
+
+## Idle sessions
+
+Nobody reads a panel on a session that has been untouched for an hour, so with
+**Pause while idle** on (the default) the polling stops when the session goes
+idle and starts again the moment it comes back — immediately if the quotes have
+gone stale by then, on the ordinary schedule otherwise. The popup says `paused
+while idle` while it is stopped.
+
+The state comes from `org.gnome.SessionManager.Presence` over D-Bus, which is
+the same signal the screensaver acts on; a session manager that does not answer
+leaves the polling exactly as it was. The lock screen needs no handling of its
+own: the extension declares the `user` session mode only, so the shell disables
+it outright when the screen locks.
+
+Between this, the 30-minute interval while every market is shut, and the backoff
+on failures, an idle laptop with the extension running makes no requests at all.
 
 ## The top bar
 
@@ -262,6 +327,11 @@ in what they honour:
 | --- | --- | --- | --- | --- |
 | Symbols | `symbols` | string list | `['DOX','VWCE.DE']` | Tickers to follow |
 | Symbols in the top bar | `panel-symbols` | string list | `[]` | Empty means the first symbol |
+| Holdings | `holdings` | dict | `{}` | Symbol → `"QUANTITY COST"`; the cost per share may be left off |
+| Show positions and totals | `show-portfolio` | boolean | `true` | Position values and the portfolio line in the popup |
+| Base currency | `base-currency` | string | `''` | ISO code the total is reported in; empty means no conversion |
+| Benchmark symbol | `benchmark` | string | `''` | Overlaid on the details chart; empty means no overlay |
+| Pause while idle | `pause-when-idle` | boolean | `true` | Stop polling on an idle session |
 | Separator | `panel-separator` | string | `'|'` | Drawn between panel symbols |
 | Show history graph | `show-graph` | boolean | `true` | Sparkline under every popup row |
 | Period | `history-range` | string | `'1mo'` | `1d`, `5d`, `1mo`, `3mo`, `6mo`, `1y`, `5y` |
@@ -288,9 +358,13 @@ gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates symbols "['D
 gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates panel-symbols "['DOX','^GSPC']"
 gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates panel-separator '│'
 gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates history-range '6mo'
+gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates holdings "{'DOX': '40 58.20', 'VWCE.DE': '12'}"
+gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates base-currency 'EUR'
+gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates benchmark '^GSPC'
 ```
 
-Changes to `symbols` and `history-range` trigger an immediate refresh;
+Changes to `holdings` and `base-currency` fetch any FX pair the new value
+needs. Changes to `symbols` and `history-range` trigger an immediate refresh;
 `panel-position` and `panel-index` rebuild the indicator in place; the rest
 apply live.
 
@@ -311,6 +385,10 @@ apply live.
   abandoned when a newer refresh starts or the extension is disabled.
 - Requests also run when the popup is opened and the cached data is older than
   the refresh interval.
+- The FX pairs a portfolio needs are fetched after the quotes, not with them:
+  which currencies matter is only known once the quotes are in hand, and the
+  panel should not wait on a rate it does not draw. The totals redraw by
+  themselves when the rates land.
 
 ### The details window
 
@@ -335,6 +413,21 @@ does not open a browser; the **Open in Yahoo Finance** button still does.
   gives at a useful resolution, so five years of daily bars are fetched once per
   window and reused as the ranges are switched. A window that starts before the
   series does is left out rather than reported against a truncated history.
+- A **benchmark** set in the preferences (`^GSPC`, `^STOXX50E`, `ACWI` — any
+  ticker) is drawn over the chart as a dashed line, rebased to the plotted
+  symbol's first bar: it is what the same money would have done had it tracked
+  the benchmark instead. Both series therefore share one axis and one scale.
+  The legend prints the benchmark's own move, and a chip under the chart prints
+  the difference — the part that was this symbol rather than the market. Both
+  are measured over the window the two series actually share, which on a day
+  chart of a European stock is the couple of hours New York was open too;
+  comparing a full session against those two hours would flatter whichever side
+  had the longer run. It costs one extra request per range, and only when a
+  benchmark is set.
+- Two exchanges do not date a trading day alike: Yahoo stamps a daily bar from
+  the session open, so a New York bar lands hours after a Frankfurt one. The
+  benchmark is therefore matched to each bar within half a bar's tolerance,
+  without which every value would come from the day before.
 - While the window is open it refreshes on the panel's own interval (never
   faster than 30s), keeping the scroll position where the reader left it.
 
@@ -346,7 +439,8 @@ and needs no key, but it can change without notice.
 
 ```
 extension.js    Panel button, popup menu, refresh timer, cache
-finance.js      Yahoo chart client, value formatting, series analytics
+finance.js      Yahoo chart client, value formatting, series analytics,
+                currency conversion and portfolio arithmetic
 widgets.js      Cairo drawing: sparkline, details chart, meters and bars
 quoteDetails.js The details window opened by clicking a symbol
 prefs.js        Adwaita preferences window, including the symbol-list editor
@@ -360,6 +454,7 @@ locale/         Compiled translations (generated, not committed)
 Makefile        build / install / run / pack targets
 install.sh      Plain-shell equivalent of 'make install'
 tests/          Validation suite run by 'make test' and by CI
+tests/unit/     finance.js unit tests, run under gjs by the same suite
 tools/          pack.sh (builds the zip) and version.sh (owns the version)
 .github/        GitHub Actions pipeline
 ```
@@ -390,7 +485,7 @@ untranslated on purpose, so they fall back to English rather than to a guess.
 | Job | What it does |
 | --- | --- |
 | `lint` | `eslint .` over `extension.js` and `prefs.js` |
-| `test` | `tests/run-tests.sh` — metadata, schema, translation and zip-layout checks |
+| `test` | `tests/run-tests.sh` — metadata, schema, translation, unit and zip-layout checks |
 | `pack` | Builds the zip and uploads it as a run artifact (branches and PRs only) |
 | `release` | On `master` only: bumps the version, tags it, and publishes the zip |
 
@@ -495,6 +590,26 @@ meantime.
 - Keep colours in `stylesheet.css` and reuse shell classes
   (`system-status-icon`, `panel-status-menu-box`) so the indicator follows the
   user's theme.
+
+**Tests**
+
+- `make test` is the whole suite; `make unit` is just the `finance.js` cases,
+  which is the loop worth running while editing a calculation.
+- The unit tests run under plain `gjs`, with no shell, no network and no
+  display. `finance.js` imports the shell's own `extension.js` for `gettext`,
+  which does not exist outside gnome-shell, so `tests/unit/stubs/` is compiled
+  into a GResource at that path and registered before the module is imported —
+  the code under test is loaded exactly as the shell loads it, rather than being
+  bent into a shape a test runner can reach.
+- That registration has to happen before the import, so `tests/unit/run.js`
+  pulls the cases in with a dynamic `import()`; a static one would be hoisted
+  above it and fail on the missing resource.
+- Number formatting goes through `Intl`, whose output depends on the runner's
+  locale. Assert structure — the sign, the currency code, the digits with
+  separators stripped — not a string that only holds under one locale.
+- Anything that touches `St`, `Clutter` or the network belongs in a widget or a
+  client, not in a tested function. Keeping the analytics pure is what makes
+  them testable at all.
 
 **Compatibility**
 
