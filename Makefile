@@ -74,6 +74,7 @@ install: $(SOURCES) $(SCHEMA) translations
 	mkdir -p "$(DESTDIR)"
 	cp -r $(SOURCES) schemas "$(DESTDIR)"/
 	@if [ -d locale ]; then cp -r locale "$(DESTDIR)"/; fi
+	./tools/stamp.sh "$(DESTDIR)/metadata.json"
 	glib-compile-schemas "$(DESTDIR)/schemas"
 	@echo "Installed to $(DESTDIR)"
 	@echo "Wayland: log out and back in (or use 'make run') before the shell picks it up."

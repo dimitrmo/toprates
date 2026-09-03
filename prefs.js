@@ -86,6 +86,7 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         this._buildDetails(page, settings);
         this._buildDisplay(page, settings);
         this._buildPlacement(page, settings);
+        this._buildAbout(page);
 
         // Rebuild the editable rows whenever the list changes, including when
         // the change came from the popup menu rather than from this window.
@@ -936,5 +937,89 @@ export default class TopRatesPreferences extends ExtensionPreferences {
         });
         group.add(indexRow);
         settings.bind('panel-index', indexRow, 'value', Gio.SettingsBindFlags.DEFAULT);
+    }
+
+    // --- About -------------------------------------------------------------
+
+    /*
+     * Which build this is. The version comes from metadata.json; the commit is
+     * written into the *installed* copy of that file by tools/stamp.sh, so a
+     * tree that was only cloned, or an archive built outside a checkout, shows
+     * no commit rather than a stale one.
+     */
+    _buildAbout(page) {
+        const meta = this.metadata;
+        const group = new Adw.PreferencesGroup({
+            title: _('About'),
+            description: _('Which build of the extension is installed.'),
+        });
+        page.add(group);
+
+        // e.g.o. adds a numeric `version` on upload; the tree only carries
+        // `version-name`.
+        const version = meta['version-name'] ?? meta.version;
+        if (version !== undefined)
+            group.add(this._propertyRow(_('Version'), String(version)));
+
+        const home = typeof meta.url === 'string' ? meta.url.trim() : '';
+        const commit = typeof meta.commit === 'string' ? meta.commit.trim() : '';
+        const dirty = meta['commit-dirty'] === true;
+
+        if (commit) {
+            const short = commit.slice(0, 12);
+            const row = this._propertyRow(_('Commit'),
+                dirty ? `${short} ${_('(modified)')}` : short);
+            // A build made from uncommitted changes is not what that commit
+            // page would show, so it does not get a link.
+            if (!dirty && home.startsWith('https://github.com/'))
+                this._linkify(row, `${home}/commit/${commit}`);
+            group.add(row);
+        }
+
+        if (home) {
+            const row = this._propertyRow(_('Project page'), home);
+            this._linkify(row, home);
+            group.add(row);
+        }
+    }
+
+    /** A read-only row: a small dim label above the value it reports. */
+    _propertyRow(title, value) {
+        const row = new Adw.ActionRow({
+            title,
+            subtitle: value,
+            subtitle_selectable: true,
+        });
+        // Adwaita's About style, which puts the emphasis on the value.
+        row.add_css_class('property');
+        return row;
+    }
+
+    /** Make a property row open `uri` when it is activated. */
+    _linkify(row, uri) {
+        // A selectable subtitle would swallow the click that activates the row.
+        row.subtitle_selectable = false;
+        row.activatable = true;
+        row.tooltip_text = uri;
+        row.add_suffix(new Gtk.Image({
+            icon_name: 'adw-external-link-symbolic',
+            valign: Gtk.Align.CENTER,
+        }));
+        row.connect('activated', () => {
+            // UriLauncher goes through the portal where there is one; the
+            // fallback covers stacks that predate GTK 4.10.
+            if (Gtk.UriLauncher) {
+                new Gtk.UriLauncher({uri}).launch(row.get_root(), null,
+                    (launcher, result) => {
+                        try {
+                            launcher.launch_finish(result);
+                        } catch (e) {
+                            console.error(`TopRates: could not open ${uri}: ${e.message}`);
+                        }
+                    });
+            } else {
+                Gio.AppInfo.launch_default_for_uri(uri, null);
+            }
+        });
     }
 }

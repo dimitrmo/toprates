@@ -86,6 +86,18 @@ if old:
     sys.exit(f"GNOME {old} is below the declared floor of 48")
 '
 
+# tools/stamp.sh writes these into the installed and packed copies only; one
+# in the tree would mean a commit hash was committed, and would then be wrong
+# for every build made after it.
+check 'metadata.json in the tree carries no build stamp' \
+    python3 -c '
+import json, sys
+m = json.load(open("metadata.json"))
+stamped = [k for k in ("commit", "commit-dirty") if k in m]
+if stamped:
+    sys.exit("remove from metadata.json: " + ", ".join(stamped))
+'
+
 check 'version-name is set for the extensions.gnome.org listing' \
     python3 -c '
 import json, sys
@@ -269,6 +281,18 @@ if out="$(./tools/pack.sh --output "$ZIP" 2>&1)"; then
 
     check 'metadata.json sits at the root of the zip' \
         bash -c 'unzip -l "$1" | grep -qE " metadata\.json$"' _ "$ZIP"
+
+    # The About group reads this back; a zip built in CI must carry it.
+    check 'the packed metadata.json is stamped with the commit' \
+        bash -c 'git rev-parse HEAD >/dev/null 2>&1 || exit 0
+                 dir="$(mktemp -d)"; trap "rm -rf $dir" EXIT
+                 unzip -q -o "$1" metadata.json -d "$dir"
+                 python3 - "$dir/metadata.json" <<"EOF"
+import json, re, sys
+commit = json.load(open(sys.argv[1])).get("commit", "")
+if not re.fullmatch(r"[0-9a-f]{40}", commit):
+    sys.exit(f"packed metadata.json commit is {commit!r}")
+EOF' _ "$ZIP"
 
     check 'extension.js sits at the root of the zip' \
         bash -c 'unzip -l "$1" | grep -qE " extension\.js$"' _ "$ZIP"

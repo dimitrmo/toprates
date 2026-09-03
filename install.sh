@@ -15,6 +15,8 @@ for item in "${SOURCES[@]}"; do
     cp -r "$SRC/$item" "$DEST/"
 done
 
+"$SRC/tools/stamp.sh" "$DEST/metadata.json"
+
 glib-compile-schemas "$DEST/schemas"
 
 # Translations: compiled straight into the installed copy.

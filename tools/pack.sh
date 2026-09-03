@@ -48,6 +48,9 @@ for src in "${SOURCES[@]}"; do
     cp -r "$src" "$STAGE/"
 done
 
+# Which commit this archive was built from; see tools/stamp.sh.
+./tools/stamp.sh "$STAGE/metadata.json"
+
 # Schema sources only; see the note above about gschemas.compiled.
 mkdir -p "$STAGE/schemas"
 cp schemas/*.gschema.xml "$STAGE/schemas/"
