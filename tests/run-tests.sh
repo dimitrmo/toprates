@@ -208,7 +208,8 @@ check 'po template parses' msgfmt --check-format --output-file=/dev/null po/topr
 
 section 'sources'
 
-for src in extension.js prefs.js metadata.json stylesheet.css icons schemas; do
+for src in extension.js prefs.js finance.js widgets.js quoteDetails.js \
+           metadata.json stylesheet.css icons schemas; do
     check "$src exists" test -e "$src"
 done
 
@@ -222,7 +223,7 @@ check 'prefs.js exports a default ExtensionPreferences subclass' \
 # extensions as ES modules only, and a stray imports.* would fail at runtime
 # rather than at pack time.
 check 'the sources use the ESM extension API, not imports.*' \
-    bash -c '! grep -nE "\bimports\.(gi|ui|misc|gettext|cairo)\b" extension.js prefs.js'
+    bash -c '! grep -nE "\bimports\.(gi|ui|misc|gettext|cairo)\b" extension.js prefs.js finance.js widgets.js quoteDetails.js'
 
 section 'packaged zip'
 
@@ -235,6 +236,13 @@ if out="$(./tools/pack.sh --output "$ZIP" 2>&1)"; then
 
     check 'extension.js sits at the root of the zip' \
         bash -c 'unzip -l "$1" | grep -qE " extension\.js$"' _ "$ZIP"
+
+    # extension.js imports these three; a zip without them loads to a blank
+    # panel and an error in the journal.
+    check 'the modules extension.js imports are bundled' \
+        bash -c 'for m in finance.js widgets.js quoteDetails.js; do
+                     unzip -l "$1" | grep -qE " $m$" || { echo "missing $m"; exit 1; }
+                 done' _ "$ZIP"
 
     check 'compiled translations are bundled' \
         bash -c 'unzip -l "$1" | grep -qE "locale/.+/LC_MESSAGES/.+\.mo$"' _ "$ZIP"

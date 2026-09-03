@@ -68,6 +68,226 @@
     font-size: 0.8em;
 }
 
+/* --- Details window ---------------------------------------------------- */
+
+.toprates-dialog-content {
+    spacing: 7px;
+}
+
+.toprates-dialog-header {
+    spacing: 14px;
+}
+
+/*
+ * The header type is set in em like everything else, so it grew with the
+ * window's font scale; these two are pulled back down by the same amount, to
+ * keep the tallest row in the window from costing the chart its height.
+ */
+.toprates-dialog-symbol {
+    font-size: 1.3em;
+    font-weight: bold;
+}
+
+.toprates-dialog-name {
+    font-size: 0.9em;
+}
+
+.toprates-dialog-meta,
+.toprates-dialog-asof {
+    font-size: 0.8em;
+}
+
+.toprates-dialog-price {
+    font-size: 1.45em;
+    font-weight: bold;
+    font-feature-settings: "tnum";
+}
+
+.toprates-dialog-delta {
+    font-size: 0.9em;
+    font-feature-settings: "tnum";
+}
+
+.toprates-view-tabs {
+    spacing: 4px;
+    padding: 1px 0 3px 0;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.22);
+}
+
+.toprates-view-tab {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.95em;
+    text-align: center;
+    color: inherit;
+}
+
+.toprates-view-tab:hover,
+.toprates-view-tab:focus {
+    background-color: rgba(127, 127, 127, 0.18);
+}
+
+.toprates-view-tab-active {
+    background-color: rgba(127, 127, 127, 0.30);
+    font-weight: bold;
+}
+
+.toprates-range-tabs {
+    spacing: 4px;
+    padding: 1px 0;
+}
+
+.toprates-range-tab {
+    padding: 2px 9px;
+    border-radius: 99px;
+    font-size: 0.85em;
+    color: inherit;
+}
+
+.toprates-range-tab:hover,
+.toprates-range-tab:focus {
+    background-color: rgba(127, 127, 127, 0.20);
+}
+
+.toprates-range-tab-active {
+    background-color: rgba(127, 127, 127, 0.32);
+    font-weight: bold;
+}
+
+.toprates-dialog-scroll {
+    /* The height itself is set inline, against the monitor. */
+    padding-right: 4px;
+}
+
+.toprates-dialog-body {
+    spacing: 10px;
+}
+
+.toprates-dialog-statusbar {
+    spacing: 8px;
+    padding-top: 1px;
+}
+
+.toprates-dialog-status,
+.toprates-dialog-empty {
+    font-size: 0.8em;
+}
+
+.toprates-loading {
+    spacing: 10px;
+    padding: 28px 0;
+}
+
+.toprates-section {
+    spacing: 3px;
+}
+
+.toprates-section-title {
+    font-size: 0.85em;
+    font-weight: 800;
+    padding-bottom: 1px;
+}
+
+.toprates-chart {
+    min-height: 120px;
+}
+
+.toprates-axis-label {
+    font-size: 0.75em;
+    font-feature-settings: "tnum";
+}
+
+.toprates-readout {
+    font-size: 0.8em;
+    font-feature-settings: "tnum";
+    padding-bottom: 2px;
+}
+
+.toprates-legend {
+    spacing: 12px;
+}
+
+.toprates-legend-item {
+    font-size: 0.75em;
+}
+
+.toprates-summary {
+    spacing: 8px;
+}
+
+.toprates-chip {
+    spacing: 1px;
+    padding: 4px 9px;
+    border-radius: 8px;
+    background-color: rgba(127, 127, 127, 0.12);
+}
+
+.toprates-chip-key {
+    font-size: 0.72em;
+}
+
+.toprates-chip-value {
+    font-size: 0.95em;
+    font-weight: bold;
+    font-feature-settings: "tnum";
+}
+
+.toprates-columns {
+    spacing: 18px;
+}
+
+.toprates-stat {
+    spacing: 10px;
+    padding: 1px 0;
+}
+
+.toprates-stat-key {
+    font-size: 0.85em;
+}
+
+.toprates-stat-value {
+    font-size: 0.85em;
+    font-feature-settings: "tnum";
+}
+
+.toprates-meter-labels {
+    padding-top: 2px;
+}
+
+.toprates-table-head {
+    padding: 1px 0 3px 0;
+    border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.toprates-table-row {
+    padding: 1px 0;
+    border-radius: 4px;
+}
+
+/* Banding, so the eye can carry a date across seven columns without slipping. */
+.toprates-table-row-alt {
+    background-color: rgba(127, 127, 127, 0.07);
+}
+
+/*
+ * Each cell is given its column's width in code; the text then aligns inside
+ * that width rather than by pushing on its neighbours, which is what kept the
+ * header and the rows from agreeing on where a column started.
+ */
+.toprates-table-cell {
+    font-size: 0.8em;
+    font-feature-settings: "tnum";
+    padding: 0 6px;
+}
+
+.toprates-table-cell-label {
+    text-align: left;
+}
+
+.toprates-table-cell-number {
+    text-align: right;
+}
+
 /*
  * Light shell themes: the gain/loss accents above are tuned for a dark ground
  * and wash out on a pale one, so they darken. The class is put on the panel

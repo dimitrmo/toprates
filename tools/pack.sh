@@ -35,7 +35,8 @@ done
 
 # The files the shell actually loads. README.md, the Makefile and the tooling
 # stay out of the archive.
-SOURCES=(metadata.json extension.js prefs.js stylesheet.css icons)
+SOURCES=(metadata.json extension.js prefs.js finance.js widgets.js
+         quoteDetails.js stylesheet.css icons)
 
 : "${OUTPUT:=$ROOT/$UUID.shell-extension.zip}"
 

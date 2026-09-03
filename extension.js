@@ -2,31 +2,19 @@ import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import St from 'gi://St';
-import Soup from 'gi://Soup?version=3.0';
 import Clutter from 'gi://Clutter';
-import Cairo from 'cairo';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
+import * as Finance from './finance.js';
+import * as Widgets from './widgets.js';
+import {QuoteDetails} from './quoteDetails.js';
+
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async',
     'replace_contents_finish');
-
-// Yahoo's chart endpoint needs no API key or cookie, unlike v7/finance/quote.
-const CHART_API = 'https://query1.finance.yahoo.com/v8/finance/chart/';
-const QUOTE_PAGE = 'https://finance.yahoo.com/quote/';
-const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) toprates-gnome-extension';
-const HTTP_TIMEOUT = 15;
-
-// Yahoo rejects some range/interval pairs, so each range gets a sane granularity.
-const HISTORY_INTERVALS = {
-    '1d': '5m', '5d': '30m', '1mo': '1d', '3mo': '1d',
-    '6mo': '1d', '1y': '1wk', '5y': '1mo',
-};
-const DEFAULT_RANGE = '1mo';
 
 // Nothing moves while every followed exchange is shut, so the poll slows down
 // rather than waking the radio every few minutes all night.
@@ -39,309 +27,6 @@ const RETRY_DELAYS = [30, 60, 120, 300];
 // Bumped when the on-disk shape changes, so an old cache is ignored.
 const CACHE_VERSION = 1;
 
-// St has no opacity property in CSS, and a hardcoded rgba() only suits one
-// theme, so muted text is faded on the actor and keeps the theme's colour.
-const MUTED_OPACITY = 155;
-const FAINT_OPACITY = 115;
-const STALE_OPACITY = 130;
-
-const GRAPH_COLORS = {
-    up: [0.18, 0.76, 0.49],
-    down: [0.88, 0.11, 0.14],
-    flat: [0.60, 0.60, 0.62],
-};
-
-// Intl knows every currency and the user's own grouping and decimal marks;
-// the formatters cost enough to build that they are worth keeping around.
-const NUMBER_FORMATS = new Map();
-
-// Some markets are quoted in minor units: London in pence, Johannesburg in
-// cents, Tel Aviv in agorot. Intl accepts these codes but renders them with
-// the major unit's symbol, turning 88.5 pence into "£88.50". They are shown
-// as a plain number plus the raw code instead.
-const MINOR_UNIT_CURRENCIES = new Set(['GBp', 'GBX', 'ZAc', 'ILA']);
-
-function numberFormat(currency, digits) {
-    const key = `${currency}/${digits}`;
-    if (!NUMBER_FORMATS.has(key)) {
-        const options = {minimumFractionDigits: digits, maximumFractionDigits: digits};
-        let format = null;
-        try {
-            format = new Intl.NumberFormat(undefined,
-                currency ? {...options, style: 'currency', currency} : options);
-        } catch {
-            // Yahoo reports a few codes Intl rejects, GBp for pence among
-            // them. Those fall back to a plain number plus the raw code.
-        }
-        NUMBER_FORMATS.set(key, format);
-    }
-    return NUMBER_FORMATS.get(key);
-}
-
-/** Sub-10 prices need more decimals: pennies and small crypto live there. */
-function priceDigits(price) {
-    return Math.abs(price) < 10 ? 4 : 2;
-}
-
-function signOf(value) {
-    return value > 0 ? '+' : value < 0 ? '−' : '';
-}
-
-function formatPrice(price, currency) {
-    if (!Number.isFinite(price))
-        return '—';
-
-    const digits = priceDigits(price);
-    const format = MINOR_UNIT_CURRENCIES.has(currency)
-        ? null : numberFormat(currency, digits);
-    if (format)
-        return format.format(price);
-
-    const value = numberFormat('', digits).format(price);
-    return currency ? `${value} ${currency}` : value;
-}
-
-/** The absolute move, signed and grouped: "+1,234.56". */
-function formatChange(change) {
-    if (!Number.isFinite(change))
-        return '';
-    return `${signOf(change)}${numberFormat('', 2).format(Math.abs(change))}`;
-}
-
-function formatPercent(percent) {
-    if (!Number.isFinite(percent))
-        return '';
-    return `${signOf(percent)}${numberFormat('', 2).format(Math.abs(percent))}%`;
-}
-
-/**
- * Which session the exchange is in. The chart endpoint carries no marketState,
- * but currentTradingPeriod gives the pre/regular/post windows in epoch seconds
- * for the symbol's own exchange, which answers the same question.
- */
-function marketStateOf(meta, now) {
-    const periods = meta?.currentTradingPeriod;
-    if (!periods)
-        return 'unknown';
-
-    const within = w => Number.isFinite(w?.start) && now >= w.start && now < w.end;
-    if (within(periods.regular))
-        return 'regular';
-    if (within(periods.pre))
-        return 'pre';
-    if (within(periods.post))
-        return 'post';
-    return 'closed';
-}
-
-function marketLabel(state) {
-    switch (state) {
-    case 'pre':
-        return _('Pre-market');
-    case 'post':
-        return _('After hours');
-    case 'closed':
-        return _('Closed');
-    default:
-        return '';
-    }
-}
-
-/**
- * A theme colour as 0-1 floats. Clutter hands colours back as bytes on some
- * versions and floats on others, so the scale is inferred from the values
- * rather than assumed.
- */
-function inkFrom(color) {
-    const scale = Math.max(color.red, color.green, color.blue) > 1 ? 255 : 1;
-    return [color.red / scale, color.green / scale, color.blue / scale];
-}
-
-/** Thin wrapper over the Yahoo chart endpoint. One request per symbol. */
-class YahooFinance {
-    constructor() {
-        this._session = new Soup.Session({
-            user_agent: USER_AGENT,
-            timeout: HTTP_TIMEOUT,
-        });
-    }
-
-    async fetchQuote(symbol, range, cancellable) {
-        const interval = HISTORY_INTERVALS[range] ?? HISTORY_INTERVALS[DEFAULT_RANGE];
-        const uri = `${CHART_API}${encodeURIComponent(symbol)}` +
-            `?interval=${interval}&range=${range}`;
-        const message = Soup.Message.new('GET', uri);
-        if (!message)
-            throw new Error(`Invalid symbol: ${symbol}`);
-
-        const bytes = await this._session.send_and_read_async(
-            message, GLib.PRIORITY_DEFAULT, cancellable);
-
-        const status = message.get_status();
-        if (status !== Soup.Status.OK)
-            throw new Error(`HTTP ${status}`);
-
-        const payload = JSON.parse(new TextDecoder().decode(bytes.get_data()));
-        const result = payload?.chart?.result?.[0];
-        const meta = result?.meta;
-        if (!meta) {
-            const reason = payload?.chart?.error?.description ?? _('no data');
-            throw new Error(reason);
-        }
-
-        const price = meta.regularMarketPrice;
-        // chartPreviousClose is the close before the requested *range*, so it
-        // only means "yesterday" for range=1d. The market's own percentage is
-        // range-independent; fall back to the chart close when it is missing.
-        const pct = meta.regularMarketChangePercent;
-        const previous = Number.isFinite(pct) && Number.isFinite(price) && pct !== -100
-            ? price / (1 + pct / 100)
-            : meta.previousClose ?? meta.chartPreviousClose ?? price;
-        const change = Number.isFinite(price) && Number.isFinite(previous)
-            ? price - previous : NaN;
-        const percent = Number.isFinite(change) && previous
-            ? (change / previous) * 100 : NaN;
-
-        // Yahoo pads the series with nulls for gaps in trading; drop them.
-        const closes = (result?.indicators?.quote?.[0]?.close ?? [])
-            .filter(v => Number.isFinite(v));
-
-        return {
-            symbol: meta.symbol ?? symbol,
-            market: marketStateOf(meta, Math.floor(Date.now() / 1000)),
-            name: meta.shortName ?? meta.longName ?? '',
-            currency: meta.currency ?? '',
-            exchange: meta.exchangeName ?? '',
-            price,
-            change,
-            percent,
-            history: closes,
-            previous,
-        };
-    }
-
-    destroy() {
-        this._session?.abort();
-        this._session = null;
-    }
-}
-
-/**
- * A price sparkline drawn with Cairo on an St.DrawingArea: a faint grid, a
- * dashed line at the opening value, a gradient area fill under the series and
- * a marker on the latest point.
- */
-function createSparkline(history, trend, height) {
-    const area = new St.DrawingArea({
-        style_class: 'toprates-graph',
-        height,
-        x_expand: true,
-    });
-
-    area.connect('repaint', () => {
-        const cr = area.get_context();
-        const [width, h] = area.get_surface_size();
-        const [r, g, b] = GRAPH_COLORS[trend] ?? GRAPH_COLORS.flat;
-        // Grid and guide borrow the theme's own text colour, so they stay
-        // visible on a light shell instead of being white on white.
-        const [ir, ig, ib] = inkFrom(area.get_theme_node().get_foreground_color());
-
-        const min = Math.min(...history);
-        const max = Math.max(...history);
-        const span = max - min;
-        const pad = 4;
-        const usable = Math.max(1, h - pad * 2);
-        // A flat series would divide by zero; centre it instead.
-        const y = value => span > 0
-            ? pad + usable * (1 - (value - min) / span)
-            : pad + usable / 2;
-        const x = i => history.length > 1
-            ? (width * i) / (history.length - 1) : width / 2;
-
-        // Hairlines land on a half-pixel so they stay crisp instead of
-        // smearing across two rows of pixels.
-        const crisp = v => Math.round(v) + 0.5;
-
-        // --- Grid ----------------------------------------------------------
-        // Roughly one column every 55px, kept within a sane range so narrow
-        // and wide popups both get a readable number of divisions.
-        const columns = Math.max(3, Math.min(8, Math.round(width / 55)));
-        const rows = 4;
-
-        cr.setLineWidth(1);
-        cr.setDash([], 0);
-        cr.setSourceRGBA(ir, ig, ib, 0.09);
-        for (let i = 1; i < columns; i++) {
-            const gx = crisp((width * i) / columns);
-            cr.moveTo(gx, 0);
-            cr.lineTo(gx, h);
-        }
-        for (let i = 1; i < rows; i++) {
-            const gy = crisp((h * i) / rows);
-            cr.moveTo(0, gy);
-            cr.lineTo(width, gy);
-        }
-        cr.stroke();
-
-        const trace = () => {
-            cr.moveTo(x(0), y(history[0]));
-            for (let i = 1; i < history.length; i++)
-                cr.lineTo(x(i), y(history[i]));
-        };
-
-        // --- Area fill -----------------------------------------------------
-        // A gradient fades the fill out towards the baseline so the series
-        // line stays the strongest thing on the chart.
-        trace();
-        cr.lineTo(x(history.length - 1), h);
-        cr.lineTo(x(0), h);
-        cr.closePath();
-        const fill = new Cairo.LinearGradient(0, 0, 0, h);
-        fill.addColorStopRGBA(0, r, g, b, 0.30);
-        fill.addColorStopRGBA(1, r, g, b, 0.02);
-        cr.setSource(fill);
-        cr.fill();
-
-        // --- Opening reference ---------------------------------------------
-        // The dashed line is what turns the shape into a chart: everything
-        // above it is a gain on the period, everything below it a loss. On a
-        // flat series it would sit exactly under the trace, so skip it.
-        if (span > 0) {
-            const openY = crisp(y(history[0]));
-            cr.setLineWidth(1);
-            cr.setDash([3, 3], 0);
-            cr.setSourceRGBA(ir, ig, ib, 0.28);
-            cr.moveTo(0, openY);
-            cr.lineTo(width, openY);
-            cr.stroke();
-            cr.setDash([], 0);
-        }
-
-        // --- Series --------------------------------------------------------
-        trace();
-        cr.setLineWidth(1.5);
-        cr.setLineJoin(Cairo.LineJoin.ROUND);
-        cr.setLineCap(Cairo.LineCap.ROUND);
-        cr.setSourceRGBA(r, g, b, 1);
-        cr.stroke();
-
-        // --- Latest value ---------------------------------------------------
-        // Pulled inside the right edge so the marker is not cut in half.
-        const lastX = Math.min(x(history.length - 1), width - 4);
-        const lastY = y(history[history.length - 1]);
-        cr.setSourceRGBA(r, g, b, 0.28);
-        cr.arc(lastX, lastY, 4, 0, 2 * Math.PI);
-        cr.fill();
-        cr.setSourceRGBA(r, g, b, 1);
-        cr.arc(lastX, lastY, 2, 0, 2 * Math.PI);
-        cr.fill();
-
-        cr.$dispose();
-    });
-
-    return area;
-}
-
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init(extension) {
@@ -349,7 +34,7 @@ class Indicator extends PanelMenu.Button {
 
         this._extension = extension;
         this._settings = extension.getSettings();
-        this._finance = new YahooFinance();
+        this._finance = new Finance.YahooFinance();
         this._quotes = new Map();     // symbol -> {quote} | {error}
         this._lastUpdate = null;
         this._timeoutId = 0;
@@ -362,6 +47,9 @@ class Indicator extends PanelMenu.Button {
         this._retries = 0;
         this._marketsClosed = false;
         this._cachedAt = null;
+        // Details windows outlive the popup that opened them, so they are
+        // tracked and closed when the extension goes away under them.
+        this._dialogs = new Set();
         // Shell themes ship as two whole stylesheets with nothing on the stage
         // to tell them apart, so the variant is measured once we are styled.
         this._dark = true;
@@ -425,7 +113,7 @@ class Indicator extends PanelMenu.Button {
             return;     // not on a stage yet; style-changed will come again
         }
 
-        const [r, g, b] = inkFrom(color);
+        const [r, g, b] = Widgets.inkFrom(color);
         const dark = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5;
         if (dark === this._dark)
             return;
@@ -496,13 +184,28 @@ class Indicator extends PanelMenu.Button {
 
     _historyRange() {
         const range = this._settings.get_string('history-range');
-        return HISTORY_INTERVALS[range] ? range : DEFAULT_RANGE;
+        return Finance.HISTORY_INTERVALS[range] ? range : Finance.DEFAULT_RANGE;
     }
 
     _trend(percent) {
-        if (!Number.isFinite(percent) || percent === 0)
-            return 'flat';
-        return percent > 0 ? 'up' : 'down';
+        return Finance.trendOf(percent);
+    }
+
+    /**
+     * The details window for one symbol: the quote page's chart, statistics
+     * and history, drawn in the shell rather than handed to a browser.
+     */
+    _openDetails(symbol) {
+        const dialog = new QuoteDetails(symbol, {
+            settings: this._settings,
+            finance: this._finance,
+            quote: this._quotes.get(symbol)?.quote,
+            range: this._historyRange(),
+            light: !this._dark,
+        });
+        this._dialogs.add(dialog);
+        dialog.connect('destroy', () => this._dialogs.delete(dialog));
+        dialog.open();
     }
 
     _isStale() {
@@ -580,7 +283,7 @@ class Indicator extends PanelMenu.Button {
         const separator = this._settings.get_string('panel-separator');
         symbols.forEach((symbol, i) => {
             if (i > 0)
-                this._addLabel(separator, 'toprates-label toprates-separator', FAINT_OPACITY);
+                this._addLabel(separator, 'toprates-label toprates-separator', Widgets.FAINT_OPACITY);
             this._addLabel(...this._panelText(symbol));
         });
     }
@@ -594,14 +297,14 @@ class Indicator extends PanelMenu.Button {
             return [`${symbol} —`, 'toprates-label toprates-error'];
 
         const {price, currency, percent} = entry.quote;
-        let text = `${symbol} ${formatPrice(price, currency)}`;
+        let text = `${symbol} ${Finance.formatPrice(price, currency)}`;
         if (this._settings.get_boolean('show-change')) {
-            const change = formatPercent(percent);
+            const change = Finance.formatPercent(percent);
             if (change)
                 text += ` ${change}`;
         }
         return [text, `toprates-label ${this._changeStyle(percent)}`,
-            entry.stale ? STALE_OPACITY : 255];
+            entry.stale ? Widgets.STALE_OPACITY : 255];
     }
 
     _updateMenu() {
@@ -638,24 +341,24 @@ class Indicator extends PanelMenu.Button {
             nameBox.add_child(new St.Label({
                 text: subtitle,
                 style_class: 'toprates-subtitle',
-                opacity: MUTED_OPACITY,
+                opacity: Widgets.MUTED_OPACITY,
             }));
         }
 
         // Only worth saying when the exchange is not trading normally.
-        const badge = marketLabel(entry?.quote?.market);
+        const badge = Finance.marketLabel(entry?.quote?.market);
         if (badge) {
             nameBox.add_child(new St.Label({
                 text: badge,
                 style_class: 'toprates-market',
-                opacity: MUTED_OPACITY,
+                opacity: Widgets.MUTED_OPACITY,
             }));
         }
         header.add_child(nameBox);
 
         const valueBox = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.END});
         if (entry?.stale)
-            valueBox.opacity = STALE_OPACITY;
+            valueBox.opacity = Widgets.STALE_OPACITY;
 
         if (!entry) {
             valueBox.add_child(new St.Label({text: '…', style_class: 'toprates-price'}));
@@ -667,11 +370,11 @@ class Indicator extends PanelMenu.Button {
         } else {
             const {price, currency, change, percent} = entry.quote;
             valueBox.add_child(new St.Label({
-                text: formatPrice(price, currency),
+                text: Finance.formatPrice(price, currency),
                 style_class: 'toprates-price',
             }));
-            const moved = formatChange(change);
-            const delta = moved ? `${moved} (${formatPercent(percent)})` : '';
+            const moved = Finance.formatChange(change);
+            const delta = moved ? `${moved} (${Finance.formatPercent(percent)})` : '';
             if (delta) {
                 valueBox.add_child(new St.Label({
                     text: delta,
@@ -688,10 +391,7 @@ class Indicator extends PanelMenu.Button {
 
         item.add_child(column);
 
-        item.connect('activate', () => {
-            Gio.AppInfo.launch_default_for_uri(
-                `${QUOTE_PAGE}${encodeURIComponent(symbol)}`, null);
-        });
+        item.connect('activate', () => this._openDetails(symbol));
 
         return item;
     }
@@ -710,7 +410,7 @@ class Indicator extends PanelMenu.Button {
             ? this._trend(percent) : 'flat';
 
         const box = new St.BoxLayout({vertical: true, x_expand: true});
-        box.add_child(createSparkline(
+        box.add_child(Widgets.createSparkline(
             history, trend, this._settings.get_int('graph-height')));
 
         const first = history[0];
@@ -720,11 +420,11 @@ class Indicator extends PanelMenu.Button {
         caption.add_child(new St.Label({
             text: this._historyRange(),
             style_class: 'toprates-range',
-            opacity: FAINT_OPACITY,
+            opacity: Widgets.FAINT_OPACITY,
             x_expand: true,
         }));
         caption.add_child(new St.Label({
-            text: formatPercent(move),
+            text: Finance.formatPercent(move),
             style_class: `toprates-range ${this._changeStyle(move)}`,
             x_align: Clutter.ActorAlign.END,
         }));
@@ -983,6 +683,15 @@ class Indicator extends PanelMenu.Button {
         for (const id of this._settingsIds)
             this._settings.disconnect(id);
         this._settingsIds = [];
+
+        // Before the session they share is aborted.
+        for (const dialog of [...this._dialogs]) {
+            // popModal first: destroying an actor that still holds the grab
+            // would leave the session modal with nothing on screen.
+            dialog.popModal();
+            dialog.destroy();
+        }
+        this._dialogs.clear();
 
         this._finance.destroy();
         this._finance = null;

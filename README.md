@@ -4,7 +4,8 @@ Live stock, ETF, index, currency and crypto quotes from Yahoo Finance in the
 GNOME top bar. Any number of symbols can be shown side by side in the panel,
 separated by a character of your choice; the popup lists every symbol you
 follow with its price, daily change and a price history sparkline, and clicking
-a row opens that symbol's Yahoo Finance page.
+a row opens a details window inside the shell — chart, key statistics, trailing
+returns and the historical bars, without leaving the desktop for a browser.
 
 <img src="images/expanded.png" width="440" alt="The TopRates panel indicator showing DOX and VWCE.DE, with the popup open below it listing both symbols with their price, daily change, a three-month sparkline, the last-update time and the Refresh now and Preferences entries">
 
@@ -311,6 +312,32 @@ apply live.
 - Requests also run when the popup is opened and the cached data is older than
   the refresh interval.
 
+### The details window
+
+Clicking a symbol in the popup opens a modal built from the same endpoint. It
+does not open a browser; the **Open in Yahoo Finance** button still does.
+
+- The range tabs (1D … MAX) each refetch the chart at a granularity that suits
+  the period, from five-minute bars for a day to monthly bars for the full
+  history.
+- The chart is one `St.DrawingArea`: grid, volume bars, a gradient area fill,
+  the previous close as a dashed reference, 50- and 200-bar moving averages
+  where the series is long enough, a tag on the last price, and a crosshair
+  that reads out the hovered bar's date, OHLC and volume. Its axes are drawn
+  with Cairo rather than laid out as labels, so they line up with the plot to
+  the pixel.
+- Yahoo's `v10/finance/quoteSummary` and `v7/finance/quote` now answer
+  *Unauthorized* without a crumb, so the statistics come from `meta` (day and
+  52-week ranges, volume, first trade date) or are computed from the series:
+  period high, low and average, average volume, annualised volatility, maximum
+  drawdown, best and worst bar, and the share of bars that closed up.
+- The trailing-return table needs a longer series than any one chart range
+  gives at a useful resolution, so five years of daily bars are fetched once per
+  window and reused as the ranges are switched. A window that starts before the
+  series does is left out rather than reported against a truncated history.
+- While the window is open it refreshes on the panel's own interval (never
+  faster than 30s), keeping the scroll position where the reader left it.
+
 Quotes are delayed by whatever Yahoo serves for that exchange (typically 15
 minutes for equities). This is an unofficial, undocumented endpoint — it is free
 and needs no key, but it can change without notice.
@@ -318,10 +345,13 @@ and needs no key, but it can change without notice.
 ## Project layout
 
 ```
-extension.js    Panel button, popup menu, Yahoo fetching, refresh timer
+extension.js    Panel button, popup menu, refresh timer, cache
+finance.js      Yahoo chart client, value formatting, series analytics
+widgets.js      Cairo drawing: sparkline, details chart, meters and bars
+quoteDetails.js The details window opened by clicking a symbol
 prefs.js        Adwaita preferences window, including the symbol-list editor
 metadata.json   UUID, name, supported shell versions, schema id
-stylesheet.css  Panel label, popup rows, sparklines, gain/loss colours
+stylesheet.css  Panel label, popup rows, sparklines, details window, colours
 icons/          Panel glyph and application icon
 images/         Screenshots for this README (not packed into the zip)
 schemas/        GSettings schema source

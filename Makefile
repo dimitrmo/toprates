@@ -25,7 +25,8 @@ SCHEMA  := schemas/org.gnome.shell.extensions.toprates.gschema.xml
 DESKTOP := $(HOME)/.local/share/applications/io.github.hellish.TopRates.desktop
 
 # Files the shell actually loads. README.md and this Makefile are not installed.
-SOURCES := extension.js prefs.js metadata.json stylesheet.css icons
+SOURCES := extension.js prefs.js finance.js widgets.js quoteDetails.js \
+           metadata.json stylesheet.css icons
 ZIP     := $(UUID).shell-extension.zip
 
 # Translations. locale/ is generated, never committed; the shell reads it from
@@ -58,7 +59,7 @@ pot:
 	    --package-name=TopRates --package-version=$(VERSION) \
 	    --copyright-holder="TopRates contributors" \
 	    --msgid-bugs-address="https://github.com/hellish" \
-	    -o $(POT) extension.js prefs.js
+	    -o $(POT) extension.js prefs.js finance.js widgets.js quoteDetails.js
 	@echo "Wrote $(POT)"
 
 ## Merge newly extracted strings into the existing translations.

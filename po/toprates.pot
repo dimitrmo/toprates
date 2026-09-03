@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: TopRates 2.1\n"
+"Project-Id-Version: TopRates 1.0.4\n"
 "Report-Msgid-Bugs-To: https://github.com/hellish\n"
-"POT-Creation-Date: 2026-09-02 21:41+0300\n"
+"POT-Creation-Date: 2026-09-03 06:59+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,306 +17,554 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: extension.js:133
-msgid "Pre-market"
-msgstr ""
-
-#: extension.js:135
-msgid "After hours"
-msgstr ""
-
-#: extension.js:137
-msgid "Closed"
-msgstr ""
-
-#: extension.js:181
-msgid "no data"
-msgstr ""
-
-#: extension.js:448
+#: extension.js:143 quoteDetails.js:194 quoteDetails.js:518 quoteDetails.js:528
 msgid "Loading…"
 msgstr ""
 
-#: extension.js:454
+#: extension.js:149
 msgid "Refresh now"
 msgstr ""
 
-#: extension.js:458
+#: extension.js:153
 msgid "Preferences"
 msgstr ""
 
-#: extension.js:569
+#: extension.js:279
 msgid "No symbols"
 msgstr ""
 
-#: extension.js:606
+#: extension.js:316
 msgid "Add symbols in Preferences"
 msgstr ""
 
-#: extension.js:740 extension.js:742 extension.js:743
+#: extension.js:447 extension.js:449 extension.js:450
 msgid "ago"
 msgstr ""
 
-#: extension.js:750
+#: extension.js:457
 msgid "Cached"
 msgstr ""
 
-#: extension.js:755
+#: extension.js:462 quoteDetails.js:556
 msgid "Updated"
 msgstr ""
 
-#: extension.js:757
+#: extension.js:464
 msgid "failed"
 msgstr ""
 
-#: extension.js:759
+#: extension.js:466
 msgid "markets closed"
 msgstr ""
 
-#: extension.js:860
+#: extension.js:567
 msgid "No symbols configured"
 msgstr ""
 
-#: extension.js:865
+#: extension.js:572
 msgid "Updating…"
 msgstr ""
 
-#: extension.js:893
+#: extension.js:600
 msgid "error"
 msgstr ""
 
-#: prefs.js:59
+#: prefs.js:73
 msgid "General"
 msgstr ""
 
-#: prefs.js:162
+#: prefs.js:176
 msgid "Add a symbol"
 msgstr ""
 
-#: prefs.js:174
+#: prefs.js:187
 msgid "Symbols"
 msgstr ""
 
-#: prefs.js:175
+#: prefs.js:188
 msgid ""
 "Yahoo Finance tickers, including the exchange suffix where one applies: DOX, "
 "VWCE.DE, EURUSD=X, BTC-EUR, ^GSPC. Press Enter to save a symbol."
 msgstr ""
 
-#: prefs.js:183
+#: prefs.js:196
 msgid "No symbols yet"
 msgstr ""
 
-#: prefs.js:184
+#: prefs.js:197
 msgid "Search above, or use + to type one in."
 msgstr ""
 
-#: prefs.js:198
+#: prefs.js:211
 msgid "Search for a symbol"
 msgstr ""
 
-#: prefs.js:271
+#: prefs.js:283
 msgid "Search failed"
 msgstr ""
 
-#: prefs.js:292
+#: prefs.js:304
 msgid "Invalid search"
 msgstr ""
 
-#: prefs.js:309
+#: prefs.js:321
 msgid "Nothing found"
 msgstr ""
 
-#: prefs.js:413
+#: prefs.js:422
 msgid "Symbol"
 msgstr ""
 
-#: prefs.js:426
+#: prefs.js:435
 msgid "Move up"
 msgstr ""
 
-#: prefs.js:428
+#: prefs.js:437
 msgid "Move down"
 msgstr ""
 
-#: prefs.js:430
+#: prefs.js:439
 msgid "Remove"
 msgstr ""
 
-#: prefs.js:469
+#: prefs.js:477
 msgid "Top bar"
 msgstr ""
 
-#: prefs.js:470
+#: prefs.js:478
 msgid ""
 "Which symbols appear in the panel, in the order of the list above. With none "
 "selected the first symbol is shown."
 msgstr ""
 
-#: prefs.js:475
+#: prefs.js:483
 msgid "Separator"
 msgstr ""
 
-#: prefs.js:476
+#: prefs.js:484
 msgid "Drawn between symbols in the panel."
 msgstr ""
 
-#: prefs.js:478
+#: prefs.js:486
 msgid "Custom…"
 msgstr ""
 
-#: prefs.js:482
+#: prefs.js:490
 msgid "Custom separator"
 msgstr ""
 
-#: prefs.js:545
+#: prefs.js:553
 msgid "History graph"
 msgstr ""
 
-#: prefs.js:546
+#: prefs.js:554
 msgid "A price sparkline under every symbol in the popup."
 msgstr ""
 
-#: prefs.js:550
+#: prefs.js:558
 msgid "Show history graph"
 msgstr ""
 
-#: prefs.js:555
+#: prefs.js:563
 msgid "Period"
 msgstr ""
 
-#: prefs.js:556
+#: prefs.js:564
 msgid "How far back the graph reaches."
 msgstr ""
 
-#: prefs.js:566
+#: prefs.js:574
 msgid "Graph height"
 msgstr ""
 
-#: prefs.js:567
+#: prefs.js:575
 msgid "Pixels."
 msgstr ""
 
-#: prefs.js:588
+#: prefs.js:596
 msgid "Display"
 msgstr ""
 
-#: prefs.js:589
+#: prefs.js:597
 msgid "What the top bar shows. The popup always lists every symbol."
 msgstr ""
 
-#: prefs.js:594
+#: prefs.js:602
 msgid "Refresh interval"
 msgstr ""
 
-#: prefs.js:595
+#: prefs.js:603
 msgid "Seconds between requests to Yahoo Finance."
 msgstr ""
 
-#: prefs.js:607
+#: prefs.js:615
 msgid "Show icon"
 msgstr ""
 
-#: prefs.js:608
+#: prefs.js:616
 msgid "The TopRates glyph, left of the quotes."
 msgstr ""
 
-#: prefs.js:613
+#: prefs.js:621
 msgid "Show label"
 msgstr ""
 
-#: prefs.js:618
+#: prefs.js:626
 msgid "Font size"
 msgstr ""
 
-#: prefs.js:619
+#: prefs.js:627
 msgid "Panel label size as a percentage of the top bar default."
 msgstr ""
 
-#: prefs.js:634
+#: prefs.js:642
 msgid "Font weight"
 msgstr ""
 
-#: prefs.js:636
+#: prefs.js:644
 msgid "Light"
 msgstr ""
 
-#: prefs.js:636
+#: prefs.js:644
 msgid "Regular"
 msgstr ""
 
-#: prefs.js:636
+#: prefs.js:644
 msgid "Medium"
 msgstr ""
 
-#: prefs.js:636
+#: prefs.js:644
 msgid "Semi-bold"
 msgstr ""
 
-#: prefs.js:636
+#: prefs.js:644
 msgid "Bold"
 msgstr ""
 
-#: prefs.js:646
+#: prefs.js:654
 msgid "Show daily change"
 msgstr ""
 
-#: prefs.js:647
+#: prefs.js:655
 msgid "Appends the percentage move to the panel label."
 msgstr ""
 
-#: prefs.js:653
+#: prefs.js:661
 msgid "Colour gains and losses"
 msgstr ""
 
-#: prefs.js:654
+#: prefs.js:662
 msgid "Green when up, red when down."
 msgstr ""
 
-#: prefs.js:666 prefs.js:671
+#: prefs.js:674 prefs.js:679
 msgid "Font family"
 msgstr ""
 
-#: prefs.js:667 prefs.js:692
+#: prefs.js:675 prefs.js:699
 msgid "Used by the panel label and the popup."
 msgstr ""
 
-#: prefs.js:678
+#: prefs.js:686
 msgid "Use the system font"
 msgstr ""
 
-#: prefs.js:693
+#: prefs.js:700
 msgid "System font. Pick one to override it."
 msgstr ""
 
-#: prefs.js:720
+#: prefs.js:727
 msgid "Placement"
 msgstr ""
 
-#: prefs.js:721
+#: prefs.js:728
 msgid "Where the indicator sits in the top bar."
 msgstr ""
 
-#: prefs.js:727
+#: prefs.js:734
 msgid "Panel box"
 msgstr ""
 
-#: prefs.js:728
+#: prefs.js:735
 msgid "Left"
 msgstr ""
 
-#: prefs.js:728
+#: prefs.js:735
 msgid "Center"
 msgstr ""
 
-#: prefs.js:728
+#: prefs.js:735
 msgid "Right"
 msgstr ""
 
-#: prefs.js:736
+#: prefs.js:743
 msgid "Index within the box"
 msgstr ""
 
-#: prefs.js:737
+#: prefs.js:744
 msgid "0 is leftmost; -1 appends to the end."
+msgstr ""
+
+#: finance.js:202
+msgid "Pre-market"
+msgstr ""
+
+#: finance.js:204
+msgid "After hours"
+msgstr ""
+
+#: finance.js:206
+msgid "Closed"
+msgstr ""
+
+#: finance.js:208 quoteDetails.js:760 quoteDetails.js:941
+msgid "Open"
+msgstr ""
+
+#: finance.js:311
+msgid "no data"
+msgstr ""
+
+#: finance.js:476
+msgid "1 week"
+msgstr ""
+
+#: finance.js:477
+msgid "1 month"
+msgstr ""
+
+#: finance.js:478
+msgid "3 months"
+msgstr ""
+
+#: finance.js:479
+msgid "6 months"
+msgstr ""
+
+#: finance.js:480
+msgid "Year to date"
+msgstr ""
+
+#: finance.js:481
+msgid "1 year"
+msgstr ""
+
+#: finance.js:482
+msgid "3 years"
+msgstr ""
+
+#: finance.js:483
+msgid "5 years"
+msgstr ""
+
+#: widgets.js:628
+msgid "O"
+msgstr ""
+
+#: widgets.js:630
+msgid "H"
+msgstr ""
+
+#: widgets.js:632
+msgid "L"
+msgstr ""
+
+#: widgets.js:633
+msgid "C"
+msgstr ""
+
+#: widgets.js:636
+msgid "Vol"
+msgstr ""
+
+#: quoteDetails.js:203
+msgid "Refresh"
+msgstr ""
+
+#: quoteDetails.js:207
+msgid "Open in Yahoo Finance"
+msgstr ""
+
+#: quoteDetails.js:215 quoteDetails.js:671 quoteDetails.js:942
+msgid "Close"
+msgstr ""
+
+#: quoteDetails.js:289
+msgid "Overview"
+msgstr ""
+
+#: quoteDetails.js:290 quoteDetails.js:840
+msgid "Performance"
+msgstr ""
+
+#: quoteDetails.js:291 quoteDetails.js:925
+msgid "Historical data"
+msgstr ""
+
+#: quoteDetails.js:405
+msgid "Could not load this symbol."
+msgstr ""
+
+#: quoteDetails.js:503
+msgid "As of"
+msgstr ""
+
+#: quoteDetails.js:558
+msgid "Last request failed"
+msgstr ""
+
+#: quoteDetails.js:559
+msgid "Source: Yahoo Finance"
+msgstr ""
+
+#: quoteDetails.js:569
+msgid "No history for this range."
+msgstr ""
+
+#: quoteDetails.js:635
+msgid "bars"
+msgstr ""
+
+#: quoteDetails.js:677 quoteDetails.js:758
+msgid "Previous close"
+msgstr ""
+
+#: quoteDetails.js:683
+msgid "MA"
+msgstr ""
+
+#: quoteDetails.js:689 quoteDetails.js:769 quoteDetails.js:942
+msgid "Volume"
+msgstr ""
+
+#: quoteDetails.js:725
+msgid "Period change"
+msgstr ""
+
+#: quoteDetails.js:728
+msgid "Period high"
+msgstr ""
+
+#: quoteDetails.js:729
+msgid "Period low"
+msgstr ""
+
+#: quoteDetails.js:730
+msgid "Period average"
+msgstr ""
+
+#: quoteDetails.js:732
+msgid "Avg volume"
+msgstr ""
+
+#: quoteDetails.js:739
+msgid "Key statistics"
+msgstr ""
+
+#: quoteDetails.js:761
+msgid "Day's range"
+msgstr ""
+
+#: quoteDetails.js:763 quoteDetails.js:793
+msgid "52-week range"
+msgstr ""
+
+#: quoteDetails.js:765
+msgid "From 52-week high"
+msgstr ""
+
+#: quoteDetails.js:767
+msgid "From 52-week low"
+msgstr ""
+
+#: quoteDetails.js:770
+msgid "Avg volume (period)"
+msgstr ""
+
+#: quoteDetails.js:773
+msgid "Exchange"
+msgstr ""
+
+#: quoteDetails.js:775
+msgid "Type"
+msgstr ""
+
+#: quoteDetails.js:776
+msgid "Currency"
+msgstr ""
+
+#: quoteDetails.js:777
+msgid "Market"
+msgstr ""
+
+#: quoteDetails.js:779
+msgid "Exchange time"
+msgstr ""
+
+#: quoteDetails.js:782
+msgid "Quote time"
+msgstr ""
+
+#: quoteDetails.js:784
+msgid "First traded"
+msgstr ""
+
+#: quoteDetails.js:786
+msgid "Granularity"
+msgstr ""
+
+#: quoteDetails.js:815
+msgid "of range"
+msgstr ""
+
+#: quoteDetails.js:867
+msgid "Risk and activity"
+msgstr ""
+
+#: quoteDetails.js:878
+msgid "Volatility (annualised)"
+msgstr ""
+
+#: quoteDetails.js:881
+msgid "Maximum drawdown"
+msgstr ""
+
+#: quoteDetails.js:885
+msgid "Bars up / down"
+msgstr ""
+
+#: quoteDetails.js:887
+msgid "Total volume (period)"
+msgstr ""
+
+#: quoteDetails.js:890
+msgid "Best bar"
+msgstr ""
+
+#: quoteDetails.js:895
+msgid "Worst bar"
+msgstr ""
+
+#: quoteDetails.js:900
+msgid "Period high on"
+msgstr ""
+
+#: quoteDetails.js:902
+msgid "Period low on"
+msgstr ""
+
+#: quoteDetails.js:941
+msgid "Date"
+msgstr ""
+
+#: quoteDetails.js:941
+msgid "High"
+msgstr ""
+
+#: quoteDetails.js:941
+msgid "Low"
+msgstr ""
+
+#: quoteDetails.js:942
+msgid "Change"
 msgstr ""
