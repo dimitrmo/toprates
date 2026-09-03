@@ -15,7 +15,7 @@ adds the lot up in a currency of your choosing, and says what it made today.
 *The panel indicator and the popup it opens: two followed symbols, each with its
 daily change and a sparkline of the selected history period.*
 
-- **UUID:** `toprates@hellish.github.io`
+- **UUID:** `toprates@dimitrmo.github.io`
 - **Supported shells:** GNOME 48, 49 and 50 (ESM extension API)
 - **Session modes:** `user` (not active on the lock screen)
 - **Data source:** `query1.finance.yahoo.com/v8/finance/chart/<symbol>` — public,
@@ -44,7 +44,7 @@ checkout, build the zip here and hand that over:
 
 ```bash
 make pack                                                   # builds the zip
-gnome-extensions install --force toprates@hellish.github.io.shell-extension.zip
+gnome-extensions install --force toprates@dimitrmo.github.io.shell-extension.zip
 ```
 
 extensions.gnome.org is only needed to publish — it buys a public listing, the
@@ -58,13 +58,13 @@ is not a prerequisite for running the extension.
 | `make` / `make schemas` | Compile the gschema in-tree (a quick schema syntax check) |
 | `make translations` | Compile `po/*.po` into `locale/` |
 | `make pot` / `make update-po` | Re-extract strings, then merge them into the translations |
-| `make install` | Install into `~/.local/share/gnome-shell/extensions/toprates@hellish.github.io` |
+| `make install` | Install into `~/.local/share/gnome-shell/extensions/toprates@dimitrmo.github.io` |
 | `make reinstall` | Uninstall, then install |
 | `make uninstall` | Remove the installed copy |
 | `make enable` / `make disable` | Enable or disable in the current session |
 | `make prefs` | Open the preferences window |
 | `make run` | Install, then launch a nested GNOME Shell to test in |
-| `make pack` | Build `toprates@hellish.github.io.shell-extension.zip` (GNOME 48-50) |
+| `make pack` | Build `toprates@dimitrmo.github.io.shell-extension.zip` (GNOME 48-50) |
 | `make test` | Run the validation suite (the checks CI runs) |
 | `make unit` | Run just the `finance.js` unit tests |
 | `make lint` | Run ESLint over the GJS sources (needs `npm install` first) |
@@ -85,10 +85,10 @@ shell process reloads:
 ```bash
 make enable
 # or
-gnome-extensions enable toprates@hellish.github.io
+gnome-extensions enable toprates@dimitrmo.github.io
 ```
 
-Check state with `gnome-extensions info toprates@hellish.github.io`; `ACTIVE`
+Check state with `gnome-extensions info toprates@dimitrmo.github.io`; `ACTIVE`
 means it loaded, `ERROR` means the stack trace is in the shell log.
 
 ## Run it without logging out
@@ -103,7 +103,7 @@ It has its own session bus but shares your dconf, so settings changes are live
 in both. Enable the extension inside it:
 
 ```bash
-DBUS_SESSION_BUS_ADDRESS=<nested bus> gnome-extensions enable toprates@hellish.github.io
+DBUS_SESSION_BUS_ADDRESS=<nested bus> gnome-extensions enable toprates@dimitrmo.github.io
 ```
 
 Close the window to end the nested session.
@@ -111,7 +111,7 @@ Close the window to end the nested session.
 ## Configuring symbols
 
 Open the preferences window — from the popup menu's **Preferences** item, via
-`make prefs`, or with `gnome-extensions prefs toprates@hellish.github.io`.
+`make prefs`, or with `gnome-extensions prefs toprates@dimitrmo.github.io`.
 
 The **Symbols** group is a full editor:
 
@@ -353,7 +353,7 @@ older install is moved into `panel-symbols` on first start and then reset.
 Everything is plain GSettings, so scripting works too:
 
 ```bash
-SD=~/.local/share/gnome-shell/extensions/toprates@hellish.github.io/schemas
+SD=~/.local/share/gnome-shell/extensions/toprates@dimitrmo.github.io/schemas
 gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates symbols "['DOX','VWCE.DE','^GSPC']"
 gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates panel-symbols "['DOX','^GSPC']"
 gsettings --schemadir "$SD" set org.gnome.shell.extensions.toprates panel-separator '│'

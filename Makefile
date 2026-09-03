@@ -12,7 +12,7 @@
 #   make lint       # run ESLint over the GJS sources
 #   make uninstall  # remove the installed copy
 
-UUID    := toprates@hellish.github.io
+UUID    := toprates@dimitrmo.github.io
 DOMAIN  := toprates
 
 # metadata.json's "version-name" is the single source of truth for the version;

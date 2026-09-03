@@ -2,7 +2,7 @@
 # Installs the extension into ~/.local/share/gnome-shell/extensions
 set -euo pipefail
 
-UUID="toprates@hellish.github.io"
+UUID="toprates@dimitrmo.github.io"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="$HOME/.local/share/gnome-shell/extensions/$UUID"
 
