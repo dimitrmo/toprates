@@ -6,6 +6,6 @@
   "session-modes": ["user"],
   "settings-schema": "org.gnome.shell.extensions.toprates",
   "gettext-domain": "toprates",
-  "url": "https://github.com/hellish",
+  "url": "https://github.com/dimitrmo/toprates",
   "version-name": "1.0.7"
 }
