@@ -3,7 +3,6 @@
   "name": "TopRates",
   "description": "Live stock, ETF, index, currency and crypto quotes from Yahoo Finance in the GNOME top bar, with a popup listing every symbol you follow and its price history.",
   "shell-version": ["48", "49", "50"],
-  "session-modes": ["user"],
   "settings-schema": "org.gnome.shell.extensions.toprates",
   "gettext-domain": "toprates",
   "url": "https://github.com/dimitrmo/toprates",

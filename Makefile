@@ -10,6 +10,7 @@
 #   make test       # run the validation suite
 #   make unit       # run just the finance.js unit tests
 #   make lint       # run ESLint over the GJS sources
+#   make shexli     # run the extensions.gnome.org review analyser
 #   make uninstall  # remove the installed copy
 
 UUID    := toprates@dimitrmo.github.io
@@ -37,7 +38,7 @@ POFILES := $(wildcard po/*.po)
 MOFILES := $(patsubst po/%.po,locale/%/LC_MESSAGES/$(DOMAIN).mo,$(POFILES))
 
 .PHONY: all schemas translations pot update-po install uninstall reinstall \
-        enable disable prefs pack test unit lint run logs clean
+        enable disable prefs pack test unit lint shexli run logs clean
 
 all: schemas translations
 
@@ -115,6 +116,11 @@ unit:
 ## Static analysis of the GJS sources; needs 'npm install' first.
 lint:
 	npx eslint .
+
+## The analyser extensions.gnome.org runs on upload, over the packed zip. It is
+## installed into a cached virtualenv on first use; see tools/shexli.sh.
+shexli:
+	./tools/shexli.sh
 
 ## Install, then run a nested GNOME Shell so changes can be tested without
 ## logging out. GNOME >= 50 uses --devkit; older versions used --nested.

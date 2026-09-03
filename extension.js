@@ -15,6 +15,7 @@ import {QuoteDetails} from './quoteDetails.js';
 
 Gio._promisify(Gio.File.prototype, 'replace_contents_bytes_async',
     'replace_contents_finish');
+Gio._promisify(Gio.File.prototype, 'load_contents_async', 'load_contents_finish');
 
 // Nothing moves while every followed exchange is shut, so the poll slows down
 // rather than waking the radio every few minutes all night.
@@ -43,6 +44,7 @@ class Indicator extends PanelMenu.Button {
         this._lastUpdate = null;
         this._timeoutId = 0;
         this._ageTimeoutId = 0;
+        this._menuStateId = 0;
         this._failures = 0;
         this._settingsIds = [];
         this._cancellable = null;
@@ -56,8 +58,11 @@ class Indicator extends PanelMenu.Button {
         this._rates = {};
         this._idle = false;
         // Details windows outlive the popup that opened them, so they are
-        // tracked and closed when the extension goes away under them.
-        this._dialogs = new Set();
+        // tracked -- with the handler that unregisters each one -- and closed
+        // when the extension goes away under them.
+        this._dialogs = new Map();     // dialog -> 'destroy' handler id
+        // Aborts the cache read if the panel goes away before it lands.
+        this._cacheCancellable = new Gio.Cancellable();
         // Shell themes ship as two whole stylesheets with nothing on the stage
         // to tell them apart, so the variant is measured once we are styled.
         this._dark = true;
@@ -246,7 +251,7 @@ class Indicator extends PanelMenu.Button {
         this.menu.addMenuItem(prefsItem);
 
         // Refresh when the menu is opened after a long idle period.
-        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+        this._menuStateId = this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen && this._isStale())
                 this._refresh();
             if (isOpen)
@@ -359,8 +364,8 @@ class Indicator extends PanelMenu.Button {
             range: this._historyRange(),
             light: !this._dark,
         });
-        this._dialogs.add(dialog);
-        dialog.connect('destroy', () => this._dialogs.delete(dialog));
+        this._dialogs.set(dialog,
+            dialog.connect('destroy', () => this._dialogs.delete(dialog)));
         dialog.open();
     }
 
@@ -741,26 +746,30 @@ class Indicator extends PanelMenu.Button {
     /**
      * Seed the panel from the previous session, so it opens on real numbers
      * instead of an ellipsis while the first request is still in flight.
+     *
+     * The read is asynchronous, so the first round may well beat it home. What
+     * it finds therefore only ever fills gaps: a quote or a rate that has
+     * already arrived is left alone.
      */
-    _loadCache() {
+    async _loadCache() {
         let payload;
         try {
-            const [ok, contents] = this._cacheFile().load_contents(null);
-            if (!ok)
-                return;
+            // Promisified, so the success boolean is stripped: contents first.
+            const [contents] = await this._cacheFile()
+                .load_contents_async(this._cacheCancellable);
             payload = JSON.parse(new TextDecoder().decode(contents));
         } catch {
             return;     // no cache yet, or unreadable: nothing worth reporting
         }
 
-        if (payload?.version !== CACHE_VERSION)
+        if (this._destroyed || payload?.version !== CACHE_VERSION)
             return;
 
         // The stored history only matches the range it was fetched for.
         const sameRange = payload.range === this._historyRange();
         for (const symbol of this._symbols()) {
             const quote = payload.quotes?.[symbol];
-            if (!quote)
+            if (!quote || this._quotes.has(symbol))
                 continue;
             this._quotes.set(symbol, {
                 quote: sameRange ? quote : {...quote, history: []},
@@ -771,10 +780,12 @@ class Indicator extends PanelMenu.Button {
         // Rates move slowly enough that yesterday's are a better opening
         // total than none at all; the next round replaces them.
         if (payload.rates && typeof payload.rates === 'object')
-            this._rates = {...payload.rates};
+            this._rates = {...payload.rates, ...this._rates};
 
-        if (Number.isFinite(payload.savedAt))
+        if (!this._lastUpdate && Number.isFinite(payload.savedAt))
             this._cachedAt = GLib.DateTime.new_from_unix_local(payload.savedAt);
+
+        this._sync();
     }
 
     _saveCache() {
@@ -990,6 +1001,13 @@ class Indicator extends PanelMenu.Button {
         this._cancellable?.cancel();
         this._cancellable = null;
 
+        this._cacheCancellable.cancel();
+
+        if (this._menuStateId) {
+            this.menu.disconnect(this._menuStateId);
+            this._menuStateId = 0;
+        }
+
         if (this._networkId) {
             this._network.disconnect(this._networkId);
             this._networkId = 0;
@@ -1007,7 +1025,10 @@ class Indicator extends PanelMenu.Button {
         this._settingsIds = [];
 
         // Before the session they share is aborted.
-        for (const dialog of [...this._dialogs]) {
+        for (const [dialog, destroyId] of [...this._dialogs]) {
+            // The handler only drops the dialog from the map, which clear()
+            // below does for all of them at once.
+            dialog.disconnect(destroyId);
             // popModal first: destroying an actor that still holds the grab
             // would leave the session modal with nothing on screen.
             dialog.popModal();

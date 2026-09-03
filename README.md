@@ -68,6 +68,7 @@ is not a prerequisite for running the extension.
 | `make test` | Run the validation suite (the checks CI runs) |
 | `make unit` | Run just the `finance.js` unit tests |
 | `make lint` | Run ESLint over the GJS sources (needs `npm install` first) |
+| `make shexli` | Run the extensions.gnome.org review analyser over the packed zip |
 | `make logs` | Follow the shell-side log |
 | `make clean` | Remove build artefacts |
 
@@ -529,6 +530,16 @@ too: `metadata.json` and a non-empty `extension.js` at the archive root, a UUID
 matching `[-a-zA-Z0-9@._]+` that does not end in `gnome.org`, a non-empty
 `shell-version` list of parseable versions, and an **uncompressed** total under
 5 MB.
+
+EGO then runs [shexli][shexli], a static analyser whose findings are the review
+comments a human reviewer would otherwise write: undisconnected signals,
+synchronous IO on the compositor thread, metadata that should have been left
+out. `make shexli` runs the same pinned version over the packed zip, and
+`make test` folds it in, so a finding shows up here rather than in a rejection.
+It installs itself into a cached virtualenv on first use; where that is not
+possible the check is skipped rather than failed.
+
+[shexli]: https://gitlab.gnome.org/Infrastructure/extensions-web/-/tree/master/shexli
 
 A freshly uploaded version is **unreviewed, and an unreviewed version is not
 installable**: its page shows "This extension is incompatible with your GNOME

@@ -8,6 +8,8 @@
 #   ./tests/run-tests.sh
 #
 # Requires: python3, glib-compile-schemas, msgfmt, zip, unzip.
+# The gjs unit tests and the shexli section are skipped when their
+# tooling is not available, rather than failing.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -303,6 +305,22 @@ else
     fail 'tools/pack.sh builds the zip' "$out"
 fi
 rm -rf "$(dirname "$ZIP")"
+
+section 'extensions.gnome.org review analyser'
+
+# shexli is the analyser the review server runs on every upload, so its
+# findings are review comments waiting to happen. It is not a distribution
+# package -- tools/shexli.sh installs a pinned copy into a cached virtualenv --
+# so an environment that cannot get at it (no python3-venv, no network on a
+# first run) reports 127 and is skipped rather than failing the suite.
+shexli_out="$(./tools/shexli.sh 2>&1)"
+shexli_status=$?
+case "$shexli_status" in
+    0) ok 'shexli reports no findings against the packed zip' ;;
+    127) printf '%s  -- skipped: shexli unavailable (%s)%s\n' \
+            "$DIM" "$(printf '%s' "$shexli_out" | tail -1)" "$RESET" ;;
+    *) fail 'shexli reports no findings against the packed zip' "$shexli_out" ;;
+esac
 
 printf '\n%s%d passed%s' "$GREEN" "$PASS" "$RESET"
 if [ "$FAIL" -gt 0 ]; then

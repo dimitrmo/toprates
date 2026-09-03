@@ -45,10 +45,20 @@ jobs:
       - name: Install GNOME build tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip gjs
+          sudo apt-get install -y --no-install-recommends libglib2.0-bin gettext zip unzip gjs python3-venv
 
-      # gjs runs the unit tests; without it run-tests.sh skips that section
-      # rather than failing, which would let a broken calculation through.
+      # tools/shexli.sh installs the review analyser here on a cache miss. The
+      # key carries the pinned versions, so a bump in tools/shexli.sh installs
+      # afresh instead of reusing the old one.
+      - name: Cache the shexli virtualenv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/toprates
+          key: shexli-${{ runner.os }}-${{ hashFiles('tools/shexli.sh') }}
+
+      # gjs runs the unit tests and python3-venv gets shexli; without either,
+      # run-tests.sh skips that section rather than failing, which would let a
+      # broken calculation or a review finding through.
       - name: Run test suite
         run: ./tests/run-tests.sh
 
