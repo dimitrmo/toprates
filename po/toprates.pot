@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: TopRates 1.0.4\n"
+"Project-Id-Version: TopRates 1.0.9\n"
 "Report-Msgid-Bugs-To: https://github.com/dimitrmo\n"
-"POT-Creation-Date: 2026-09-03 07:51+0300\n"
+"POT-Creation-Date: 2026-09-03 08:37+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,79 +17,83 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: extension.js:234 quoteDetails.js:213 quoteDetails.js:556 quoteDetails.js:566
+#: extension.js:239 quoteDetails.js:213 quoteDetails.js:556 quoteDetails.js:566
 msgid "Loading…"
 msgstr ""
 
-#: extension.js:240
+#: extension.js:245
 msgid "Refresh now"
 msgstr ""
 
-#: extension.js:244
+#: extension.js:249
 msgid "Preferences"
 msgstr ""
 
-#: extension.js:435
+#: extension.js:259
+msgid "Version"
+msgstr ""
+
+#: extension.js:452
 msgid "No symbols"
 msgstr ""
 
-#: extension.js:472
+#: extension.js:489
 msgid "Add symbols in Preferences"
 msgstr ""
 
-#: extension.js:595 prefs.js:557
+#: extension.js:612 prefs.js:557
 msgid "Portfolio"
 msgstr ""
 
-#: extension.js:602 extension.js:603
+#: extension.js:619 extension.js:620
 msgid "positions"
 msgstr ""
 
-#: extension.js:606
+#: extension.js:623
 msgid "no rate for the rest"
 msgstr ""
 
-#: extension.js:622
+#: extension.js:639
 msgid "today"
 msgstr ""
 
-#: extension.js:633
+#: extension.js:650
 msgid "total"
 msgstr ""
 
-#: extension.js:692 extension.js:694 extension.js:695
+#: extension.js:709 extension.js:711 extension.js:712
 msgid "ago"
 msgstr ""
 
-#: extension.js:702
+#: extension.js:719
 msgid "Cached"
 msgstr ""
 
-#: extension.js:707 quoteDetails.js:594
+#: extension.js:724 quoteDetails.js:594
 msgid "Updated"
 msgstr ""
 
-#: extension.js:709
+#: extension.js:726
 msgid "failed"
 msgstr ""
 
-#: extension.js:711
+#: extension.js:728
 msgid "markets closed"
 msgstr ""
 
-#: extension.js:713
+#: extension.js:730
 msgid "paused while idle"
 msgstr ""
 
-#: extension.js:820
+#: extension.js:843
 msgid "No symbols configured"
 msgstr ""
 
-#: extension.js:825
+#: extension.js:848
 msgid "Updating…"
 msgstr ""
 
-#: extension.js:853
+#: extension.js:876
 msgid "error"
 msgstr ""
 

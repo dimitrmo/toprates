@@ -35,6 +35,11 @@
     font-size: 0.9em;
 }
 
+.toprates-version {
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+
 /* --- Portfolio ---------------------------------------------------------- */
 
 .toprates-holding {

@@ -250,6 +250,18 @@ class Indicator extends PanelMenu.Button {
         prefsItem.connect('activate', () => this._extension.openPreferences());
         this.menu.addMenuItem(prefsItem);
 
+        // e.g.o. adds a numeric `version`; the tree only carries `version-name`.
+        const meta = this._extension.metadata;
+        const version = meta['version-name'] ?? meta.version;
+        if (version !== undefined) {
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                `${_('Version')} ${version}`, {
+                    reactive: false,
+                    style_class: 'toprates-version',
+                }));
+        }
+
         // Refresh when the menu is opened after a long idle period.
         this._menuStateId = this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen && this._isStale())
