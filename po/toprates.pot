@@ -6,9 +6,9 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: TopRates 1.0.10\n"
+"Project-Id-Version: TopRates 1.0.11\n"
 "Report-Msgid-Bugs-To: https://github.com/dimitrmo\n"
-"POT-Creation-Date: 2026-09-03 08:48+0300\n"
+"POT-Creation-Date: 2026-09-03 21:54+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: extension.js:239 quoteDetails.js:213 quoteDetails.js:556 quoteDetails.js:566
+#: extension.js:239 quoteDetails.js:247 quoteDetails.js:634 quoteDetails.js:644
 msgid "Loading…"
 msgstr ""
 
@@ -33,67 +33,67 @@ msgstr ""
 msgid "Version"
 msgstr ""
 
-#: extension.js:452
+#: extension.js:459
 msgid "No symbols"
 msgstr ""
 
-#: extension.js:489
+#: extension.js:496
 msgid "Add symbols in Preferences"
 msgstr ""
 
-#: extension.js:612 prefs.js:558
+#: extension.js:619 prefs.js:558 quoteDetails.js:343
 msgid "Portfolio"
 msgstr ""
 
-#: extension.js:619 extension.js:620
+#: extension.js:626 extension.js:627
 msgid "positions"
 msgstr ""
 
-#: extension.js:623
+#: extension.js:630
 msgid "no rate for the rest"
 msgstr ""
 
-#: extension.js:639
+#: extension.js:646
 msgid "today"
 msgstr ""
 
-#: extension.js:650
+#: extension.js:657
 msgid "total"
 msgstr ""
 
-#: extension.js:709 extension.js:711 extension.js:712
+#: extension.js:716 extension.js:718 extension.js:719
 msgid "ago"
 msgstr ""
 
-#: extension.js:719
+#: extension.js:726
 msgid "Cached"
 msgstr ""
 
-#: extension.js:724 quoteDetails.js:594
+#: extension.js:731 quoteDetails.js:672
 msgid "Updated"
 msgstr ""
 
-#: extension.js:726
+#: extension.js:733
 msgid "failed"
 msgstr ""
 
-#: extension.js:728
+#: extension.js:735
 msgid "markets closed"
 msgstr ""
 
-#: extension.js:730
+#: extension.js:737
 msgid "paused while idle"
 msgstr ""
 
-#: extension.js:843
+#: extension.js:850
 msgid "No symbols configured"
 msgstr ""
 
-#: extension.js:848
+#: extension.js:855
 msgid "Updating…"
 msgstr ""
 
-#: extension.js:876
+#: extension.js:883
 msgid "error"
 msgstr ""
 
@@ -204,7 +204,7 @@ msgstr ""
 msgid "Add one above, then give it a quantity here."
 msgstr ""
 
-#: prefs.js:650
+#: prefs.js:650 quoteDetails.js:1057
 msgid "Quantity"
 msgstr ""
 
@@ -435,7 +435,7 @@ msgstr ""
 msgid "Closed"
 msgstr ""
 
-#: finance.js:239 quoteDetails.js:834 quoteDetails.js:1015
+#: finance.js:239 quoteDetails.js:896 quoteDetails.js:1275
 msgid "Open"
 msgstr ""
 
@@ -495,198 +495,286 @@ msgstr ""
 msgid "Vol"
 msgstr ""
 
-#: quoteDetails.js:222
+#: quoteDetails.js:256
 msgid "Refresh"
 msgstr ""
 
-#: quoteDetails.js:226
+#: quoteDetails.js:260
 msgid "Open in Yahoo Finance"
 msgstr ""
 
-#: quoteDetails.js:234 quoteDetails.js:725 quoteDetails.js:1016
+#: quoteDetails.js:268 quoteDetails.js:808 quoteDetails.js:1276
 msgid "Close"
 msgstr ""
 
-#: quoteDetails.js:308
+#: quoteDetails.js:342
 msgid "Overview"
 msgstr ""
 
-#: quoteDetails.js:309 quoteDetails.js:914
+#: quoteDetails.js:344 quoteDetails.js:1174
 msgid "Performance"
 msgstr ""
 
-#: quoteDetails.js:310 quoteDetails.js:999
+#: quoteDetails.js:345 quoteDetails.js:1259
 msgid "Historical data"
 msgstr ""
 
-#: quoteDetails.js:435
+#: quoteDetails.js:482
 msgid "Could not load this symbol."
 msgstr ""
 
-#: quoteDetails.js:541
+#: quoteDetails.js:619
 msgid "As of"
 msgstr ""
 
-#: quoteDetails.js:596
+#: quoteDetails.js:674
 msgid "Last request failed"
 msgstr ""
 
-#: quoteDetails.js:597
+#: quoteDetails.js:675
 msgid "Source: Yahoo Finance"
 msgstr ""
 
-#: quoteDetails.js:607
+#: quoteDetails.js:688
 msgid "No history for this range."
 msgstr ""
 
-#: quoteDetails.js:688
+#: quoteDetails.js:771
 msgid "bars"
 msgstr ""
 
-#: quoteDetails.js:731 quoteDetails.js:832
+#: quoteDetails.js:814 quoteDetails.js:894
 msgid "Previous close"
 msgstr ""
 
-#: quoteDetails.js:737
+#: quoteDetails.js:820
 msgid "MA"
 msgstr ""
 
-#: quoteDetails.js:753 quoteDetails.js:843 quoteDetails.js:1016
+#: quoteDetails.js:836 quoteDetails.js:905 quoteDetails.js:1276
 msgid "Volume"
 msgstr ""
 
-#: quoteDetails.js:789
+#: quoteDetails.js:851
 msgid "Period change"
 msgstr ""
 
-#: quoteDetails.js:792
+#: quoteDetails.js:854
 msgid "Period high"
 msgstr ""
 
-#: quoteDetails.js:793
+#: quoteDetails.js:855
 msgid "Period low"
 msgstr ""
 
-#: quoteDetails.js:794
+#: quoteDetails.js:856
 msgid "Period average"
 msgstr ""
 
-#: quoteDetails.js:796
+#: quoteDetails.js:858
 msgid "Avg volume"
 msgstr ""
 
-#: quoteDetails.js:804
+#: quoteDetails.js:866
 msgid "vs"
 msgstr ""
 
-#: quoteDetails.js:813
+#: quoteDetails.js:875
 msgid "Key statistics"
 msgstr ""
 
-#: quoteDetails.js:835
+#: quoteDetails.js:897
 msgid "Day's range"
 msgstr ""
 
-#: quoteDetails.js:837 quoteDetails.js:867
+#: quoteDetails.js:899 quoteDetails.js:929
 msgid "52-week range"
 msgstr ""
 
-#: quoteDetails.js:839
+#: quoteDetails.js:901
 msgid "From 52-week high"
 msgstr ""
 
-#: quoteDetails.js:841
+#: quoteDetails.js:903
 msgid "From 52-week low"
 msgstr ""
 
-#: quoteDetails.js:844
+#: quoteDetails.js:906
 msgid "Avg volume (period)"
 msgstr ""
 
-#: quoteDetails.js:847
+#: quoteDetails.js:909
 msgid "Exchange"
 msgstr ""
 
-#: quoteDetails.js:849
+#: quoteDetails.js:911
 msgid "Type"
 msgstr ""
 
-#: quoteDetails.js:850
+#: quoteDetails.js:912
 msgid "Currency"
 msgstr ""
 
-#: quoteDetails.js:851
+#: quoteDetails.js:913
 msgid "Market"
 msgstr ""
 
-#: quoteDetails.js:853
+#: quoteDetails.js:915
 msgid "Exchange time"
 msgstr ""
 
-#: quoteDetails.js:856
+#: quoteDetails.js:918
 msgid "Quote time"
 msgstr ""
 
-#: quoteDetails.js:858
+#: quoteDetails.js:920
 msgid "First traded"
 msgstr ""
 
-#: quoteDetails.js:860
+#: quoteDetails.js:922
 msgid "Granularity"
 msgstr ""
 
-#: quoteDetails.js:889
+#: quoteDetails.js:951
 msgid "of range"
 msgstr ""
 
-#: quoteDetails.js:941
+#: quoteDetails.js:989
+msgid "No price for this symbol yet."
+msgstr ""
+
+#: quoteDetails.js:1020 quoteDetails.js:1066
+msgid "Market value"
+msgstr ""
+
+#: quoteDetails.js:1022 quoteDetails.js:1071
+msgid "Day's change"
+msgstr ""
+
+#: quoteDetails.js:1029 quoteDetails.js:1034
+msgid "Total gain/loss"
+msgstr ""
+
+#: quoteDetails.js:1034
+msgid "No cost basis"
+msgstr ""
+
+#: quoteDetails.js:1039 quoteDetails.js:1132
+msgid "Share of portfolio"
+msgstr ""
+
+#: quoteDetails.js:1048
+msgid "Position"
+msgstr ""
+
+#: quoteDetails.js:1059
+msgid "Average cost"
+msgstr ""
+
+#: quoteDetails.js:1062
+msgid "Cost basis"
+msgstr ""
+
+#: quoteDetails.js:1064
+msgid "Last price"
+msgstr ""
+
+#: quoteDetails.js:1074
+msgid "Unrealised gain"
+msgstr ""
+
+#: quoteDetails.js:1077
+msgid "Return on cost"
+msgstr ""
+
+#: quoteDetails.js:1086
+msgid "Value in"
+msgstr ""
+
+#: quoteDetails.js:1088
+msgid "Exchange rate"
+msgstr ""
+
+#: quoteDetails.js:1091
+msgid "unavailable"
+msgstr ""
+
+#: quoteDetails.js:1103
+msgid "Over the selected range"
+msgstr ""
+
+#: quoteDetails.js:1106
+msgid "Change in value"
+msgstr ""
+
+#: quoteDetails.js:1110
+msgid "Value at period open"
+msgstr ""
+
+#: quoteDetails.js:1112
+msgid "Value at period high"
+msgstr ""
+
+#: quoteDetails.js:1114
+msgid "Value at period low"
+msgstr ""
+
+#: quoteDetails.js:1118
+msgid "Peak-to-trough"
+msgstr ""
+
+#: quoteDetails.js:1148
+msgid "of portfolio"
+msgstr ""
+
+#: quoteDetails.js:1201
 msgid "Risk and activity"
 msgstr ""
 
-#: quoteDetails.js:952
+#: quoteDetails.js:1212
 msgid "Volatility (annualised)"
 msgstr ""
 
-#: quoteDetails.js:955
+#: quoteDetails.js:1215
 msgid "Maximum drawdown"
 msgstr ""
 
-#: quoteDetails.js:959
+#: quoteDetails.js:1219
 msgid "Bars up / down"
 msgstr ""
 
-#: quoteDetails.js:961
+#: quoteDetails.js:1221
 msgid "Total volume (period)"
 msgstr ""
 
-#: quoteDetails.js:964
+#: quoteDetails.js:1224
 msgid "Best bar"
 msgstr ""
 
-#: quoteDetails.js:969
+#: quoteDetails.js:1229
 msgid "Worst bar"
 msgstr ""
 
-#: quoteDetails.js:974
+#: quoteDetails.js:1234
 msgid "Period high on"
 msgstr ""
 
-#: quoteDetails.js:976
+#: quoteDetails.js:1236
 msgid "Period low on"
 msgstr ""
 
-#: quoteDetails.js:1015
+#: quoteDetails.js:1275
 msgid "Date"
 msgstr ""
 
-#: quoteDetails.js:1015
+#: quoteDetails.js:1275
 msgid "High"
 msgstr ""
 
-#: quoteDetails.js:1015
+#: quoteDetails.js:1275
 msgid "Low"
 msgstr ""
 
-#: quoteDetails.js:1016
+#: quoteDetails.js:1276
 msgid "Change"
 msgstr ""

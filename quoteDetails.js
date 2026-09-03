@@ -39,6 +39,7 @@ const CHART_HEIGHT = 300;
 // underneath keep applying to whichever slice is on screen, because both the
 // risk figures and the historical table are cut from the selected range.
 const OVERVIEW = 'overview';
+const POSITION = 'position';
 const PERFORMANCE = 'performance';
 const HISTORY = 'history';
 
@@ -96,6 +97,33 @@ function sectionTitle(text) {
     });
 }
 
+/**
+ * The row of wide-format figures that heads a tab, and one cell of it. The
+ * chips carry the numbers a reader wants without scrolling, so both the
+ * overview and the portfolio tab open with a row of them.
+ */
+function chipRow() {
+    return new St.BoxLayout({x_expand: true, style_class: 'toprates-summary'});
+}
+
+function chip(row, label, value, valueClass = '') {
+    const cell = new St.BoxLayout({
+        vertical: true,
+        x_expand: true,
+        style_class: 'toprates-chip',
+    });
+    cell.add_child(new St.Label({
+        text: label,
+        style_class: 'toprates-chip-key',
+        opacity: Widgets.FAINT_OPACITY,
+    }));
+    cell.add_child(new St.Label({
+        text: value,
+        style_class: `toprates-chip-value ${valueClass}`,
+    }));
+    row.add_child(cell);
+}
+
 /** A titled block; the caller fills the returned box with rows. */
 function section(title) {
     const box = new St.BoxLayout({
@@ -110,7 +138,7 @@ function section(title) {
 
 export const QuoteDetails = GObject.registerClass(
 class QuoteDetails extends ModalDialog.ModalDialog {
-    _init(symbol, {settings, finance, quote, range, light}) {
+    _init(symbol, {settings, finance, quote, range, light, rates, portfolio}) {
         super._init({
             styleClass: 'toprates-dialog',
             destroyOnClose: true,
@@ -126,6 +154,12 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         // The popup's cached quote paints the header before the first request
         // comes back, so the window never opens empty.
         this._detail = quote ? {...quote, points: [], interval: ''} : null;
+        // The panel fetches the FX rates and adds the positions up; the window
+        // only re-prices this one holding, so it borrows both rather than
+        // asking for them again. Both are snapshots: a rate that arrives after
+        // the window opened moves the panel, not this.
+        this._rates = rates ?? {};
+        this._portfolio = portfolio ?? null;
         this._longSeries = null;
         // The benchmark for the range on screen, refetched with it: the two
         // series have to be cut the same way to be laid over one another.
@@ -306,6 +340,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         this._views = new Map();
         for (const {view, label} of [
             {view: OVERVIEW, label: _('Overview')},
+            {view: POSITION, label: _('Portfolio')},
             {view: PERFORMANCE, label: _('Performance')},
             {view: HISTORY, label: _('Historical data')},
         ]) {
@@ -323,8 +358,20 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         return tabs;
     }
 
+    /*
+     * Which tabs are on offer, and which of them is open. The portfolio tab
+     * only exists while the symbol is actually held, and holdings are edited
+     * in a preferences window that can be open alongside this one: the check
+     * is re-run on every render rather than settled once at build time. A
+     * holding deleted underneath an open portfolio tab drops it to the
+     * overview instead of leaving it on a tab with nothing to say.
+     */
     _updateViewTabs() {
+        const held = Boolean(this._holding());
+        if (!held && this._view === POSITION)
+            this._view = OVERVIEW;
         for (const [view, button] of this._views) {
+            button.visible = view !== POSITION || held;
             if (view === this._view)
                 button.add_style_class_name('toprates-view-tab-active');
             else
@@ -469,6 +516,37 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         return benchmark;
     }
 
+    _baseCurrency() {
+        return this._settings.get_string('base-currency').trim().toUpperCase();
+    }
+
+    /**
+     * This symbol's holding, or null when it is only followed. Re-read from
+     * the settings each time rather than captured at open, so a quantity
+     * edited in preferences shows up here on the next render.
+     */
+    _holding() {
+        try {
+            return Finance.parseHoldings(
+                this._settings.get_value('holdings').deepUnpack())
+                .get(this._symbol.toUpperCase()) ?? null;
+        } catch {
+            return null;         // an unreadable key is an empty portfolio
+        }
+    }
+
+    /**
+     * The holding priced off the window's own quote rather than the panel's.
+     * The two agree except in the seconds after a refresh, and it is this
+     * window's price that the reader has in front of them.
+     */
+    _position(detail) {
+        const holding = this._holding();
+        if (!holding)
+            return null;
+        return Finance.positionOf(detail, holding, this._baseCurrency(), this._rates);
+    }
+
     _changeStyle(percent) {
         if (!this._colorize() || !Number.isFinite(percent) || percent === 0)
             return 'toprates-flat';
@@ -600,6 +678,9 @@ class QuoteDetails extends ModalDialog.ModalDialog {
 
     _render() {
         const detail = this._detail;
+        // A holding may have appeared or gone since the last draw, and the
+        // tab strip is what says so.
+        this._updateViewTabs();
         if (!detail?.points?.length) {
             this._rendered = false;
             this._body.destroy_all_children();
@@ -629,6 +710,8 @@ class QuoteDetails extends ModalDialog.ModalDialog {
      * this go", where the overview answers "what is it doing now".
      */
     _blocksFor(detail, stats) {
+        if (this._view === POSITION)
+            return this._positionBlocks(detail, stats).filter(block => block);
         if (this._view === PERFORMANCE) {
             return [
                 this._performanceSection(),
@@ -763,37 +846,16 @@ class QuoteDetails extends ModalDialog.ModalDialog {
 
     /** The chips under the chart: what the selected range actually did. */
     _summarySection(detail, stats, overlay = null) {
-        const box = new St.BoxLayout({
-            x_expand: true,
-            style_class: 'toprates-summary',
-        });
+        const box = chipRow();
 
-        const chip = (label, value, valueClass = '') => {
-            const cell = new St.BoxLayout({
-                vertical: true,
-                x_expand: true,
-                style_class: 'toprates-chip',
-            });
-            cell.add_child(new St.Label({
-                text: label,
-                style_class: 'toprates-chip-key',
-                opacity: Widgets.FAINT_OPACITY,
-            }));
-            cell.add_child(new St.Label({
-                text: value,
-                style_class: `toprates-chip-value ${valueClass}`,
-            }));
-            box.add_child(cell);
-        };
-
-        chip(_('Period change'),
+        chip(box, _('Period change'),
             `${Finance.formatChange(stats.change)} (${Finance.formatPercent(stats.percent)})`,
             this._changeStyle(stats.percent));
-        chip(_('Period high'), Finance.formatBare(stats.high));
-        chip(_('Period low'), Finance.formatBare(stats.low));
-        chip(_('Period average'), Finance.formatBare(stats.average));
+        chip(box, _('Period high'), Finance.formatBare(stats.high));
+        chip(box, _('Period low'), Finance.formatBare(stats.low));
+        chip(box, _('Period average'), Finance.formatBare(stats.average));
         if (Number.isFinite(stats.volumeAverage) && stats.volumeAverage > 0)
-            chip(_('Avg volume'), Finance.formatVolume(stats.volumeAverage));
+            chip(box, _('Avg volume'), Finance.formatVolume(stats.volumeAverage));
         // Both moves come out of the window the two series share, which on a
         // day chart of a European stock is the couple of hours New York was
         // also open: the gap between them is what holding this rather than the
@@ -801,7 +863,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         if (overlay && Number.isFinite(overlay.percent) &&
             Number.isFinite(overlay.symbolPercent)) {
             const relative = overlay.symbolPercent - overlay.percent;
-            chip(`${_('vs')} ${overlay.symbol}`,
+            chip(box, `${_('vs')} ${overlay.symbol}`,
                 Finance.formatPercent(relative), this._changeStyle(relative));
         }
 
@@ -895,6 +957,204 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         }));
         labels.add_child(new St.Label({
             text: Finance.formatBare(high),
+            style_class: 'toprates-axis-label',
+            opacity: Widgets.MUTED_OPACITY,
+            x_expand: true,
+            x_align: Clutter.ActorAlign.END,
+        }));
+        box.add_child(labels);
+
+        return box;
+    }
+
+    // --- Portfolio -------------------------------------------------------
+
+    /**
+     * The portfolio tab: what holding this symbol is worth and what it has
+     * done, for this symbol alone. Every figure is a quantity times a price
+     * out of the same response the chart is drawn from, so the tab moves with
+     * the window's own polling rather than with whatever the popup last saw.
+     *
+     * The range tabs keep applying here as they do everywhere else: the
+     * period block re-prices the holding against the selected range's high,
+     * low and change, which turns "down 4% over a year" into money.
+     */
+    _positionBlocks(detail, stats) {
+        const position = this._position(detail);
+        // The holding is there — the tab would not be — but the response came
+        // back without a price to multiply it by. Say so rather than leave the
+        // tab blank, which reads as a bug.
+        if (!position) {
+            return [new St.Label({
+                text: _('No price for this symbol yet.'),
+                style_class: 'toprates-dialog-empty',
+                opacity: Widgets.MUTED_OPACITY,
+            })];
+        }
+
+        return [
+            this._positionSummary(position),
+            this._positionSection(detail, position),
+            this._positionPeriodSection(detail, stats, position),
+            this._positionWeightSection(position),
+        ];
+    }
+
+    /**
+     * What share of the whole portfolio this position is, or NaN when that
+     * cannot be answered honestly: the panel's total is short whenever a
+     * holding could not be converted into the base currency, and a share of a
+     * short total overstates itself.
+     */
+    _weight(position) {
+        const total = this._portfolio;
+        if (!total || total.missing > 0 || !(total.value > 0) ||
+            !Number.isFinite(position.baseValue))
+            return NaN;
+        return (position.baseValue / total.value) * 100;
+    }
+
+    _positionSummary(position) {
+        const row = chipRow();
+
+        chip(row, _('Market value'),
+            Finance.formatPrice(position.value, position.currency));
+        chip(row, _("Day's change"),
+            Finance.formatChange(position.dayChange) || '—',
+            this._changeStyle(position.dayChange));
+        // Only a holding entered with a cost has a gain. Without one the tab
+        // says the basis is missing rather than reporting the whole position
+        // as profit, which is what a zero cost would come to.
+        if (Number.isFinite(position.gain)) {
+            chip(row, _('Total gain/loss'),
+                `${Finance.formatChange(position.gain)} ` +
+                `(${Finance.formatPercent(position.gainPercent)})`,
+                this._changeStyle(position.gainPercent));
+        } else {
+            chip(row, _('Total gain/loss'), _('No cost basis'));
+        }
+
+        const weight = this._weight(position);
+        if (Number.isFinite(weight)) {
+            chip(row, _('Share of portfolio'),
+                `${Finance.numberFormat('', 1).format(weight)}%`);
+        }
+
+        return row;
+    }
+
+    /** The holding on the left, what it has come to on the right. */
+    _positionSection(detail, position) {
+        const box = section(_('Position'));
+        const columns = new St.BoxLayout({x_expand: true, style_class: 'toprates-columns'});
+        const left = new St.BoxLayout({vertical: true, x_expand: true});
+        const right = new St.BoxLayout({vertical: true, x_expand: true});
+        columns.add_child(left);
+        columns.add_child(right);
+        box.add_child(columns);
+
+        const {currency} = position;
+        left.add_child(statRow(_('Quantity'),
+            Finance.formatQuantity(position.quantity)));
+        left.add_child(statRow(_('Average cost'),
+            Number.isFinite(position.cost)
+                ? Finance.formatPrice(position.cost, currency) : '—'));
+        left.add_child(statRow(_('Cost basis'),
+            Finance.formatPrice(position.invested, currency)));
+        left.add_child(statRow(_('Last price'),
+            Finance.formatPrice(detail.price, currency)));
+        left.add_child(statRow(_('Market value'),
+            Finance.formatPrice(position.value, currency)));
+
+        const day = Finance.formatChange(position.dayChange);
+        const percent = Finance.formatPercent(detail.percent);
+        right.add_child(statRow(_("Day's change"),
+            day ? `${day}${percent ? ` (${percent})` : ''}` : '—',
+            this._changeStyle(position.dayChange)));
+        right.add_child(statRow(_('Unrealised gain'),
+            Finance.formatChange(position.gain) || '—',
+            this._changeStyle(position.gain)));
+        right.add_child(statRow(_('Return on cost'),
+            Finance.formatPercent(position.gainPercent) || '—',
+            this._changeStyle(position.gainPercent)));
+
+        // A position quoted in another currency is only half reported by its
+        // own numbers: what it is worth to the holder is the converted one.
+        const unit = Finance.majorUnitOf(currency);
+        if (position.base && position.base !== unit.code) {
+            const rate = Finance.convert(unit.factor, currency, position.base, this._rates);
+            right.add_child(statRow(`${_('Value in')} ${position.base}`,
+                Finance.formatPrice(position.baseValue, position.base)));
+            right.add_child(statRow(_('Exchange rate'),
+                Number.isFinite(rate)
+                    ? `1 ${unit.code} = ${Finance.formatBare(rate)} ${position.base}`
+                    : _('unavailable')));
+        }
+
+        return box;
+    }
+
+    /**
+     * The holding measured over the range on screen. The same tabs that cut
+     * the chart cut this, so switching to 1Y answers what a year of holding
+     * this was worth without the reader multiplying anything out.
+     */
+    _positionPeriodSection(detail, stats, position) {
+        const box = section(_('Over the selected range'));
+        const {quantity, currency} = position;
+
+        box.add_child(statRow(_('Change in value'),
+            `${Finance.formatChange(quantity * stats.change)} ` +
+            `(${Finance.formatPercent(stats.percent)})`,
+            this._changeStyle(stats.percent)));
+        box.add_child(statRow(_('Value at period open'),
+            Finance.formatPrice(quantity * stats.first, currency)));
+        box.add_child(statRow(_('Value at period high'),
+            Finance.formatPrice(quantity * stats.high, currency)));
+        box.add_child(statRow(_('Value at period low'),
+            Finance.formatPrice(quantity * stats.low, currency)));
+        // How far under its own high inside the range the position sat: the
+        // paper loss someone watching it would have had to sit through.
+        box.add_child(statRow(_('Peak-to-trough'),
+            Finance.formatPercent(stats.drawdown) || '—',
+            this._changeStyle(stats.drawdown)));
+
+        return box;
+    }
+
+    /** Where this position sits in the whole: one bar, nothing to the total. */
+    _positionWeightSection(position) {
+        const weight = this._weight(position);
+        if (!Number.isFinite(weight))
+            return null;
+
+        const total = this._portfolio;
+        const box = section(_('Share of portfolio'));
+        box.add_child(Widgets.createLevelMeter({
+            low: 0,
+            high: total.value,
+            value: position.baseValue,
+            trend: this._trend(position.gainPercent),
+        }));
+
+        const labels = new St.BoxLayout({x_expand: true, style_class: 'toprates-meter-labels'});
+        labels.add_child(new St.Label({
+            text: Finance.formatPrice(position.baseValue, position.base),
+            style_class: 'toprates-axis-label',
+            opacity: Widgets.MUTED_OPACITY,
+            x_expand: true,
+        }));
+        labels.add_child(new St.Label({
+            text: `${Finance.numberFormat('', 1).format(weight)}% ${_('of portfolio')}`,
+            style_class: 'toprates-axis-label',
+            opacity: Widgets.FAINT_OPACITY,
+            x_expand: true,
+            x_align: Clutter.ActorAlign.CENTER,
+        }));
+        labels.add_child(new St.Label({
+            // The panel resolved the total's currency; without a base set it
+            // is the one every position happened to share, not this one's.
+            text: Finance.formatPrice(total.value, total.currency),
             style_class: 'toprates-axis-label',
             opacity: Widgets.MUTED_OPACITY,
             x_expand: true,

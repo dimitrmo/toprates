@@ -224,6 +224,19 @@ test('parseHolding takes a quantity and an optional cost', () => {
     equal(Finance.parseHolding(null), null);
 });
 
+test('parseHoldings keys the settings map in upper case', () => {
+    const holdings = Finance.parseHoldings({
+        aapl: '10 142.3', ' msft ': '5', BROKEN: 'abc', EMPTY: '0',
+    });
+
+    equal(holdings.size, 2, 'the unparseable entries are left out');
+    deepEqual(holdings.get('AAPL'), {quantity: 10, cost: 142.3});
+    deepEqual(holdings.get('MSFT'), {quantity: 5, cost: NaN},
+        'the key is trimmed as well as upper-cased');
+    equal(Finance.parseHoldings(null).size, 0);
+    equal(Finance.parseHoldings(undefined).size, 0);
+});
+
 test('formatHolding writes back what parseHolding reads', () => {
     equal(Finance.formatHolding({quantity: 10, cost: 142.3}), '10 142.3');
     equal(Finance.formatHolding({quantity: 10, cost: NaN}), '10');

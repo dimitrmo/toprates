@@ -170,6 +170,24 @@ Today's move covers every position in the total. The unrealised gain covers only
 the ones that carry a cost basis — mixing the others in would report their whole
 value as a loss.
 
+### The position tab
+
+A held symbol carries its own **Portfolio** tab in the details window, next to
+the overview. It is the popup's two lines opened out: quantity, average cost
+and cost basis against the last price and the market value, the day's move and
+the unrealised gain in money as well as in percent, and — when the holding is
+quoted abroad — the converted value with the rate it went through.
+
+The tab is cut by the range tabs like everything else in that window, so it
+also answers what the *range on screen* was worth to the position: the change
+in money, what it was worth at the period's open, high and low, and how far
+under its own high it sat on the way. A bar at the foot places the position in
+the whole portfolio; it is left out when the total is short a position, since a
+share of a short total overstates itself.
+
+The tab appears only for a symbol that has a quantity, and disappears again the
+moment the quantity is removed — including while the window is open.
+
 ### Base currency
 
 Positions in different currencies only add up once they share one. **Base
@@ -429,6 +447,10 @@ does not open a browser; the **Open in Yahoo Finance** button still does.
   the session open, so a New York bar lands hours after a Frankfurt one. The
   benchmark is therefore matched to each bar within half a bar's tolerance,
   without which every value would come from the day before.
+- A held symbol gains a **Portfolio** tab, priced off the window's own quote
+  rather than the panel's cached one. The window fetches no FX of its own: it
+  borrows the rates and the portfolio total the panel already has, so a rate
+  that lands afterwards moves the panel and not the open window.
 - While the window is open it refreshes on the panel's own interval (never
   faster than 30s), keeping the scroll position where the reader left it.
 
@@ -490,6 +512,11 @@ untranslated on purpose, so they fall back to English rather than to a guess.
 | `pack` | Builds the zip and uploads it as a run artifact (branches and PRs only) |
 | `release` | On `master` only: bumps the version, tags it, and publishes the zip |
 
+Both jobs name the archive `<uuid>-vX.Y.Z.shell-extension.zip`, so a zip pulled
+out of a run or a release says which build it is without being opened. `make
+pack` keeps the bare `<uuid>.shell-extension.zip` that `gnome-extensions
+install` is usually pointed at; the bytes inside are the same either way.
+
 Both `make test` and `make lint` run the same checks locally, so a failure can
 be reproduced without pushing.
 
@@ -522,8 +549,8 @@ Download the zip from the release (or run `make pack`) and upload it at
 <https://extensions.gnome.org/upload/>. There is one archive per release and one
 upload per release: `shell-version` covers 48, 49 and 50, and EGO serves that
 single version to every shell in the range. The zip is reproducible — the same
-commit always packs to identical bytes — so a local build can be checked against
-a published artifact.
+commit always packs to identical bytes, whatever the file is called — so a local
+build can be checked against a published artifact.
 
 What EGO checks on upload, and what this repo's `make test` therefore checks
 too: `metadata.json` and a non-empty `extension.js` at the archive root, a UUID

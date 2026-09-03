@@ -292,19 +292,12 @@ class Indicator extends PanelMenu.Button {
 
     /** The held positions, keyed the way the settings spell the symbol. */
     _holdings() {
-        const holdings = new Map();
-        let stored;
         try {
-            stored = this._settings.get_value('holdings').deepUnpack();
+            return Finance.parseHoldings(
+                this._settings.get_value('holdings').deepUnpack());
         } catch {
-            return holdings;     // an unreadable key is an empty portfolio
+            return new Map();    // an unreadable key is an empty portfolio
         }
-        for (const [symbol, value] of Object.entries(stored ?? {})) {
-            const holding = Finance.parseHolding(value);
-            if (holding)
-                holdings.set(symbol.trim().toUpperCase(), holding);
-        }
-        return holdings;
     }
 
     _baseCurrency() {
@@ -334,13 +327,20 @@ class Indicator extends PanelMenu.Button {
         return positions;
     }
 
+    /** The totals line as the popup wants it, which is only when asked for. */
+    _portfolio(positions) {
+        if (!this._settings.get_boolean('show-portfolio'))
+            return null;
+        return this._portfolioTotals(positions);
+    }
+
     /**
      * The totals line, or null when there is nothing to add up. Without a base
      * currency the positions are only summed while they already share one:
      * adding dollars to euros would print a number that means nothing.
      */
-    _portfolio(positions) {
-        if (positions.size === 0 || !this._settings.get_boolean('show-portfolio'))
+    _portfolioTotals(positions) {
+        if (positions.size === 0)
             return null;
 
         const base = this._baseCurrency();
@@ -367,6 +367,11 @@ class Indicator extends PanelMenu.Button {
     /**
      * The details window for one symbol: the quote page's chart, statistics
      * and history, drawn in the shell rather than handed to a browser.
+     *
+     * The rates and the portfolio total travel with it because the window
+     * fetches neither: it re-prices the holding off its own polling, but a
+     * foreign position still needs the panel's rates to reach the base
+     * currency, and a weight still needs the whole to be a share of.
      */
     _openDetails(symbol) {
         const dialog = new QuoteDetails(symbol, {
@@ -375,6 +380,8 @@ class Indicator extends PanelMenu.Button {
             quote: this._quotes.get(symbol)?.quote,
             range: this._historyRange(),
             light: !this._dark,
+            rates: this._rates,
+            portfolio: this._portfolioTotals(this._positions()),
         });
         this._dialogs.set(dialog,
             dialog.connect('destroy', () => this._dialogs.delete(dialog)));

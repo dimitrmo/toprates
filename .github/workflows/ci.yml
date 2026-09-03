@@ -80,10 +80,16 @@ jobs:
 
       # One archive, for the shell versions metadata.json advertises. It is the
       # single upload extensions.gnome.org takes for this UUID.
+      #
+      # The version rides in the file name so a zip downloaded from a run --
+      # or kept next to an older one -- says which build it is without being
+      # opened. extensions.gnome.org reads metadata.json rather than the name,
+      # so the archive still uploads as-is.
       - name: Build zip
         run: |
           uuid="$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])')"
-          ./tools/pack.sh --output "dist/${uuid}.shell-extension.zip"
+          version="$(./tools/version.sh get)"
+          ./tools/pack.sh --output "dist/${uuid}-v${version}.shell-extension.zip"
 
       # Unpacking here would defeat the purpose: the artifact must stay a zip
       # that can be uploaded to extensions.gnome.org as-is, so it is uploaded
@@ -151,11 +157,13 @@ jobs:
           exit 1
 
       # One archive, for the shell versions metadata.json advertises. It is the
-      # single upload extensions.gnome.org takes for this UUID.
+      # single upload extensions.gnome.org takes for this UUID. It carries the
+      # bumped version in its name, so the asset attached to the release and
+      # the tag it hangs off cannot drift apart.
       - name: Build zip
         run: |
           uuid="$(python3 -c 'import json;print(json.load(open("metadata.json"))["uuid"])')"
-          ./tools/pack.sh --output "dist/${uuid}.shell-extension.zip"
+          ./tools/pack.sh --output "dist/${uuid}-v${{ steps.bump.outputs.version }}.shell-extension.zip"
 
       - name: Upload zip artifact
         uses: actions/upload-artifact@v4

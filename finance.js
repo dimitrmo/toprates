@@ -628,6 +628,21 @@ export function parseHolding(value) {
     return {quantity, cost: Number.isFinite(cost) && cost > 0 ? cost : NaN};
 }
 
+/**
+ * Every holding the settings key carries, keyed in upper case so a symbol
+ * spelled either way in the followed list still finds its position. Entries
+ * that do not parse are left out rather than counted as zero.
+ */
+export function parseHoldings(stored) {
+    const holdings = new Map();
+    for (const [symbol, value] of Object.entries(stored ?? {})) {
+        const holding = parseHolding(value);
+        if (holding)
+            holdings.set(symbol.trim().toUpperCase(), holding);
+    }
+    return holdings;
+}
+
 /** The inverse of parseHolding, for writing the settings key back. */
 export function formatHolding(holding) {
     if (!holding || !Number.isFinite(holding.quantity) || holding.quantity === 0)
