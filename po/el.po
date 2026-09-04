@@ -8,7 +8,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: TopRates 2.1\n"
-"Report-Msgid-Bugs-To: https://github.com/dimitrmo\n"
+"Report-Msgid-Bugs-To: https://github.com/dimitrmo/toprates\n"
 "POT-Creation-Date: 2026-09-03 21:54+0300\n"
 "PO-Revision-Date: 2026-09-02 21:00+0300\n"
 "Last-Translator: unassigned\n"

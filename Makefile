@@ -60,7 +60,7 @@ pot:
 	xgettext --from-code=UTF-8 --language=JavaScript --keyword=_ --keyword=N_ \
 	    --package-name=TopRates --package-version=$(VERSION) \
 	    --copyright-holder="TopRates contributors" \
-	    --msgid-bugs-address="https://github.com/dimitrmo" \
+	    --msgid-bugs-address="https://github.com/dimitrmo/toprates" \
 	    -o $(POT) extension.js prefs.js finance.js widgets.js quoteDetails.js
 	@echo "Wrote $(POT)"
 
