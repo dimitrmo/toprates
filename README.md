@@ -16,7 +16,7 @@ adds the lot up in a currency of your choosing, and says what it made today.
 daily change and a sparkline of the selected history period.*
 
 - **UUID:** `toprates@dimitrmo.github.io`
-- **Supported shells:** GNOME 48, 49 and 50 (ESM extension API)
+- **Supported shells:** GNOME 48, 49, 50 and 51 (ESM extension API)
 - **Session modes:** `user` (not active on the lock screen)
 - **Data source:** `query1.finance.yahoo.com/v8/finance/chart/<symbol>` — public,
   no API key, no account
@@ -64,7 +64,7 @@ is not a prerequisite for running the extension.
 | `make enable` / `make disable` | Enable or disable in the current session |
 | `make prefs` | Open the preferences window |
 | `make run` | Install, then launch a nested GNOME Shell to test in |
-| `make pack` | Build `toprates@dimitrmo.github.io.shell-extension.zip` (GNOME 48-50) |
+| `make pack` | Build `toprates@dimitrmo.github.io.shell-extension.zip` (GNOME 48-51) |
 | `make test` | Run the validation suite (the checks CI runs) |
 | `make unit` | Run just the `finance.js` unit tests |
 | `make lint` | Run ESLint over the GJS sources (needs `npm install` first) |
@@ -99,7 +99,8 @@ make run
 ```
 
 This installs and then starts a second GNOME Shell in a window
-(`gnome-shell --devkit` on GNOME 50, `--nested --wayland` on older versions).
+(`gnome-shell --devkit` on GNOME 50 and newer, `--nested --wayland` on older
+versions).
 It has its own session bus but shares your dconf, so settings changes are live
 in both. Enable the extension inside it:
 
@@ -547,7 +548,7 @@ archive contains.
 
 Download the zip from the release (or run `make pack`) and upload it at
 <https://extensions.gnome.org/upload/>. There is one archive per release and one
-upload per release: `shell-version` covers 48, 49 and 50, and EGO serves that
+upload per release: `shell-version` covers 48, 49, 50 and 51, and EGO serves that
 single version to every shell in the range. The zip is reproducible — the same
 commit always packs to identical bytes, whatever the file is called — so a local
 build can be checked against a published artifact.
@@ -565,6 +566,15 @@ out. `make shexli` runs the same pinned version over the packed zip, and
 `make test` folds it in, so a finding shows up here rather than in a rejection.
 It installs itself into a cached virtualenv on first use; where that is not
 possible the check is skipped rather than failed.
+
+shexli 0.2.1 — the pinned version, and the one extensions-web deploys — carries
+a hardcoded list of plausible shell releases that stops at 50, so the `51` in
+`shell-version` trips `EGO-M-004` ("implausible future releases") even though
+the release is real. `WAIVED_RULES` in `tools/shexli.sh` lets that one finding
+through so the suite still reflects the extension rather than the analyser's
+calendar; it prints on every run. Delete the waiver, and bump `SHEXLI_VERSION`,
+as soon as a shexli that knows about 51 is out — until then an upload can come
+back with that finding, and the answer is that the extension does run on 51.
 
 [shexli]: https://gitlab.gnome.org/Infrastructure/extensions-web/-/tree/master/shexli
 
@@ -616,7 +626,8 @@ meantime.
 - The prefs base class moved in GNOME 50
   (`.../Extensions/js/extensions/prefs.js`) from the 48–49 path
   (`.../Extensions/js/extensionPreferences.js`); `prefs.js` imports it
-  dynamically with a fallback so one file covers both.
+  dynamically with a fallback so one file covers both, and 50–51 share the new
+  path.
 - `gettext` may only be called from inside extension methods, not at module
   scope.
 - Prefer `settings.bind()` when a widget maps directly to a key; the symbol rows
@@ -653,7 +664,7 @@ meantime.
 
 - Keep `shell-version` in `metadata.json` accurate — claiming a version you have
   not run on is the most common review rejection. 48 is the declared floor
-  because 48-50 are the releases this is actually tested against; the *hard*
+  because 48-51 are the releases this is actually tested against; the *hard*
   floor is 45, where the ESM extension API arrived. Nothing here needs anything
   newer than libadwaita 1.4 or GTK 4.10, so widening the range downwards to 45
   is a `metadata.json` edit and a test run, not a port.

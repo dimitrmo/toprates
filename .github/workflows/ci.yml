@@ -182,5 +182,5 @@ jobs:
           files: dist/*.zip
           generate_release_notes: true
           body: |
-            `*.shell-extension.zip` — GNOME Shell 48-50. Upload it as-is at
+            `*.shell-extension.zip` — GNOME Shell 48-51. Upload it as-is at
             https://extensions.gnome.org/upload/.

@@ -13,6 +13,10 @@
 # shexli is not packaged for distributions, so it is installed into a cached
 # virtualenv the first time this runs and reused thereafter. Override the
 # location with SHEXLI_VENV, or put shexli on PATH and this is skipped.
+#
+# A finding whose rule id is in WAIVED_RULES below is still printed, but does
+# not fail the run. Keep that list empty unless the finding is the pinned
+# analyser being out of date rather than a defect here.
 set -uo pipefail
 
 # Pinned so a new rule in a shexli release cannot turn a green tree red on an
@@ -23,6 +27,16 @@ SHEXLI_VERSION="0.2.1"
 # JavaScript grammar it pulls in. extensions-web pins these two; so do we.
 TREE_SITTER_VERSION="0.25.2"
 TREE_SITTER_JS_VERSION="0.25.0"
+
+# Findings the pin raises that are not defects in this extension, each with the
+# reason it is waived. They are still shown; they just do not fail the run.
+#
+#   EGO-M-004 -- shexli 0.2.1 hardcodes 50 as the newest plausible shell
+#   release, so the "51" in shell-version reads to it as an implausible future
+#   version. GNOME 51 is a real release; the analyser simply predates it. Drop
+#   this the moment SHEXLI_VERSION moves to a build that knows about 51, so a
+#   genuine shell-version mistake is caught again.
+WAIVED_RULES="EGO-M-004"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INVOKED_FROM="$PWD"
@@ -98,8 +112,9 @@ if [ -z "$TARGET" ]; then
 fi
 
 # shexli always exits 0, findings or not, so the status is read back from the
-# JSON summary. Any finding fails: the tree is clean today, and a rule that
-# starts firing is exactly what this is here to surface.
+# findings list. Any finding fails: the tree is clean today, and a rule that
+# starts firing is exactly what this is here to surface. The one exception is
+# WAIVED_RULES above, which is read out of the same list.
 if ! report="$("${SHEXLI[@]}" --format json "$TARGET" 2>&1)"; then
     echo "shexli: analysis failed" >&2
     printf '%s\n' "$report" >&2
@@ -112,8 +127,11 @@ else
     "${SHEXLI[@]}" --format text "$TARGET"
 fi
 
-printf '%s' "$report" | python3 -c '
-import json, sys
-summary = json.load(sys.stdin)["summary"]
-sys.exit(1 if summary["finding_count"] else 0)
+printf '%s' "$report" | WAIVED_RULES="$WAIVED_RULES" python3 -c '
+import json, os, sys
+waived = set(os.environ["WAIVED_RULES"].split())
+findings = json.load(sys.stdin)["findings"]
+for rule in sorted({f["rule_id"] for f in findings} & waived):
+    print(f"shexli: {rule} waived, see WAIVED_RULES in tools/shexli.sh", file=sys.stderr)
+sys.exit(1 if any(f["rule_id"] not in waived for f in findings) else 0)
 '

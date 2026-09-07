@@ -79,7 +79,7 @@ bad = [v for v in versions if not isinstance(v, str) or not v.split(".")[0].isdi
 if bad:
     sys.exit(f"not version strings: {bad}")
 # 45 is the hard floor -- it is where the ESM extension API arrived, and these
-# sources are ES modules. 48 is the declared floor, since 48-50 are what the
+# sources are ES modules. 48 is the declared floor, since 48-51 are what the
 # extension is tested against; see "Compatibility" in the README.
 old = [v for v in versions if int(v.split(".")[0]) < 48]
 if old:

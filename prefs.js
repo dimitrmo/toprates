@@ -11,7 +11,7 @@ const GdkWayland = await import('gi://GdkWayland?version=4.0')
     .then(m => m.default)
     .catch(() => null);
 
-// GNOME 50 moved this module; 45-49 expose it at the old path.
+// GNOME 50 moved this module (50 and 51 use it); 45-49 expose it at the old path.
 const prefsModule = await import('resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js')
     .catch(() => import('resource:///org/gnome/Shell/Extensions/js/extensionPreferences.js'));
 const {ExtensionPreferences, gettext: _} = prefsModule;
