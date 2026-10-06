@@ -674,17 +674,16 @@ class Indicator extends PanelMenu.Button {
         if (history.length < 2)
             return null;
 
-        const {percent} = entry.quote;
+        const first = history[0];
+        const last = history[history.length - 1];
+        const move = first ? ((last - first) / first) * 100 : NaN;
         const trend = this._settings.get_boolean('colorize')
-            ? this._trend(percent) : 'flat';
+            ? this._trend(move) : 'flat';
 
         const box = new St.BoxLayout({vertical: true, x_expand: true});
         box.add_child(Widgets.createSparkline(
             history, trend, this._settings.get_int('graph-height')));
 
-        const first = history[0];
-        const last = history[history.length - 1];
-        const move = first ? ((last - first) / first) * 100 : NaN;
         const caption = new St.BoxLayout({x_expand: true, style_class: 'toprates-graph-caption'});
         caption.add_child(new St.Label({
             text: this._historyRange(),
