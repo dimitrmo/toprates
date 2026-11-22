@@ -513,10 +513,16 @@ class Indicator extends PanelMenu.Button {
         item.set_style(this._fontStyle());
 
         // Header row on top, price history underneath it.
-        const column = new St.BoxLayout({vertical: true, x_expand: true});
+        const column = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            x_expand: true,
+        });
         const header = new St.BoxLayout({x_expand: true, style_class: 'toprates-quote-header'});
 
-        const nameBox = new St.BoxLayout({vertical: true, x_expand: true});
+        const nameBox = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            x_expand: true,
+        });
         nameBox.add_child(new St.Label({
             text: symbol,
             style_class: 'toprates-symbol',
@@ -553,7 +559,10 @@ class Indicator extends PanelMenu.Button {
         }
         header.add_child(nameBox);
 
-        const valueBox = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.END});
+        const valueBox = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            x_align: Clutter.ActorAlign.END,
+        });
         if (entry?.stale)
             valueBox.opacity = Widgets.STALE_OPACITY;
 
@@ -614,7 +623,7 @@ class Indicator extends PanelMenu.Button {
         item.set_style(this._fontStyle());
 
         const row = new St.BoxLayout({x_expand: true});
-        const left = new St.BoxLayout({vertical: true, x_expand: true});
+        const left = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         left.add_child(new St.Label({
             text: _('Portfolio'),
             style_class: 'toprates-symbol',
@@ -633,7 +642,10 @@ class Indicator extends PanelMenu.Button {
         }));
         row.add_child(left);
 
-        const right = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.END});
+        const right = new St.BoxLayout({
+            orientation: Clutter.Orientation.VERTICAL,
+            x_align: Clutter.ActorAlign.END,
+        });
         right.add_child(new St.Label({
             text: Finance.formatPrice(portfolio.value, portfolio.currency),
             style_class: 'toprates-price',
@@ -678,7 +690,7 @@ class Indicator extends PanelMenu.Button {
         const trend = this._settings.get_boolean('colorize')
             ? this._trend(percent) : 'flat';
 
-        const box = new St.BoxLayout({vertical: true, x_expand: true});
+        const box = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         box.add_child(Widgets.createSparkline(
             history, trend, this._settings.get_int('graph-height')));
 

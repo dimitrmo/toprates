@@ -126,6 +126,12 @@ shexli:
 ## Install, then run a nested GNOME Shell so changes can be tested without
 ## logging out. GNOME >= 50 uses --devkit; older versions used --nested.
 run: install
+	@if [ -e /etc/fedora-release ] && [ ! -x /usr/libexec/mutter-devkit ] && \
+	    gnome-shell --help 2>&1 | grep -q -- --devkit; then \
+	    echo "make run: no viewer, the nested shell would have no window." >&2; \
+	    echo "          sudo dnf install mutter-devkit" >&2; \
+	    exit 1; \
+	fi
 	@if gnome-shell --help 2>&1 | grep -q -- --devkit; then \
 	    dbus-run-session -- gnome-shell --devkit; \
 	else \

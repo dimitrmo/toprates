@@ -93,10 +93,12 @@ Two behaviours worth knowing before touching the refresh path:
 
 ## Shell compatibility
 
-`shell-version` covers 48–51; the hard floor is 45 (where the ESM extension API
-arrived). `prefs.js` imports its base class dynamically with a fallback because
-GNOME 50 moved the module — 50 and 51 use
-`.../Extensions/js/extensions/prefs.js`, 45–49 the old
+`shell-version` covers 48–51, and 48 is the hard floor: `St.BoxLayout` gained
+`orientation` there, and 51 removed the `vertical` property it replaced, so
+never write `vertical: true`. `make test` cannot catch that kind of removal;
+only running the shell does. `prefs.js` imports its base class dynamically with
+a fallback because GNOME 50 moved the module — 50 and 51 use
+`.../Extensions/js/extensions/prefs.js`, 48–49 the old
 `.../Extensions/js/extensionPreferences.js` path. Claiming a version the
 extension has not been run on is the most common EGO review rejection.
 

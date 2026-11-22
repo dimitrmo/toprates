@@ -108,7 +108,7 @@ function chipRow() {
 
 function chip(row, label, value, valueClass = '') {
     const cell = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         style_class: 'toprates-chip',
     });
@@ -127,7 +127,7 @@ function chip(row, label, value, valueClass = '') {
 /** A titled block; the caller fills the returned box with rows. */
 function section(title) {
     const box = new St.BoxLayout({
-        vertical: true,
+        orientation: Clutter.Orientation.VERTICAL,
         x_expand: true,
         style_class: 'toprates-section',
     });
@@ -199,7 +199,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         this._contentWidth = width;
 
         const content = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             style_class: 'toprates-dialog-content',
         });
@@ -220,7 +220,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         content.add_child(this._buildRangeTabs());
 
         this._body = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             style_class: 'toprates-dialog-body',
         });
@@ -278,7 +278,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
             style_class: 'toprates-dialog-header',
         });
 
-        const left = new St.BoxLayout({vertical: true, x_expand: true});
+        const left = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         this._titleLabel = new St.Label({
             text: this._symbol,
             style_class: 'toprates-dialog-symbol',
@@ -299,7 +299,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
         header.add_child(left);
 
         const right = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             x_align: Clutter.ActorAlign.END,
         });
         this._priceLabel = new St.Label({
@@ -648,7 +648,7 @@ class QuoteDetails extends ModalDialog.ModalDialog {
     _showBodyMessage(text, spinning = false) {
         this._body.destroy_all_children();
         const box = new St.BoxLayout({
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             y_expand: true,
             x_align: Clutter.ActorAlign.CENTER,
@@ -874,8 +874,8 @@ class QuoteDetails extends ModalDialog.ModalDialog {
     _statsSection(detail, stats) {
         const box = section(_('Key statistics'));
         const columns = new St.BoxLayout({x_expand: true, style_class: 'toprates-columns'});
-        const left = new St.BoxLayout({vertical: true, x_expand: true});
-        const right = new St.BoxLayout({vertical: true, x_expand: true});
+        const left = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        const right = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         columns.add_child(left);
         columns.add_child(right);
         box.add_child(columns);
@@ -1047,8 +1047,8 @@ class QuoteDetails extends ModalDialog.ModalDialog {
     _positionSection(detail, position) {
         const box = section(_('Position'));
         const columns = new St.BoxLayout({x_expand: true, style_class: 'toprates-columns'});
-        const left = new St.BoxLayout({vertical: true, x_expand: true});
-        const right = new St.BoxLayout({vertical: true, x_expand: true});
+        const left = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        const right = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         columns.add_child(left);
         columns.add_child(right);
         box.add_child(columns);
@@ -1200,8 +1200,8 @@ class QuoteDetails extends ModalDialog.ModalDialog {
     _activitySection(detail, stats) {
         const box = section(_('Risk and activity'));
         const columns = new St.BoxLayout({x_expand: true, style_class: 'toprates-columns'});
-        const left = new St.BoxLayout({vertical: true, x_expand: true});
-        const right = new St.BoxLayout({vertical: true, x_expand: true});
+        const left = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        const right = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
         columns.add_child(left);
         columns.add_child(right);
         box.add_child(columns);

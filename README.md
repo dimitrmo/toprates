@@ -27,6 +27,10 @@ daily change and a sparkline of the selected history period.*
 - `glib-compile-schemas` (`glib2-devel` on Fedora, `libglib2.0-dev-bin` on
   Debian/Ubuntu)
 - `make` and the `gnome-extensions` CLI (the latter ships with GNOME Shell)
+- For `make run` on GNOME 50 and newer: the devkit viewer (`mutter-devkit` on
+  Fedora, which does not install it by default)
+- For `make shexli` on Python 3.15 (Fedora 45): `gcc` and `python3-devel`, as
+  the pinned tree-sitter has no wheel for it and is built from source
 - Working internet access; libsoup 3 is used for the requests
 
 ## Install
@@ -664,10 +668,9 @@ meantime.
 
 - Keep `shell-version` in `metadata.json` accurate — claiming a version you have
   not run on is the most common review rejection. 48 is the declared floor
-  because 48-51 are the releases this is actually tested against; the *hard*
-  floor is 45, where the ESM extension API arrived. Nothing here needs anything
-  newer than libadwaita 1.4 or GTK 4.10, so widening the range downwards to 45
-  is a `metadata.json` edit and a test run, not a port.
+  and also the hard one: `St.BoxLayout` gained `orientation` in 48, and 51
+  removed the `vertical` property it replaced, so widening the range downwards
+  would need a shim at every vertical box.
 - Bump `version-name` per release.
 
 ## Debugging

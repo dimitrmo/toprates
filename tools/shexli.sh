@@ -7,7 +7,7 @@
 #   ./tools/shexli.sh --format json   # machine-readable output
 #
 # Exit status: 0 clean, 1 findings, 127 shexli could not be made available
-# (no python3, or no network for the first install). Callers that must not
+# (no python3, no network, or no headers to build with). Callers that must not
 # fail on a missing analyser -- tests/run-tests.sh -- treat 127 as a skip.
 #
 # shexli is not packaged for distributions, so it is installed into a cached
@@ -68,7 +68,12 @@ if command -v shexli >/dev/null 2>&1; then
     SHEXLI=(shexli)
 else
     VENV="${SHEXLI_VENV:-${XDG_CACHE_HOME:-$HOME/.cache}/toprates/shexli-$SHEXLI_VERSION}"
-    if [ ! -x "$VENV/bin/python" ]; then
+    # bin/python links to the system interpreter, so it outlives a distribution
+    # upgrade while the packages stay behind in lib/pythonX.Y of the old one.
+    # -x alone would reuse that venv; also require a lib dir for this Python.
+    if [ ! -x "$VENV/bin/python" ] || ! "$VENV/bin/python" -c 'import os, sys
+v = "python%d.%d" % sys.version_info[:2]
+sys.exit(not os.path.isdir(os.path.join(sys.prefix, "lib", v)))'; then
         command -v python3 >/dev/null 2>&1 || {
             echo "shexli: python3 is needed to install the analyser" >&2
             exit 127
@@ -84,7 +89,7 @@ else
                 "shexli==$SHEXLI_VERSION" \
                 "tree-sitter==$TREE_SITTER_VERSION" \
                 "tree-sitter-javascript==$TREE_SITTER_JS_VERSION" 2>&1)"; then
-            echo "shexli: install failed (offline?)" >&2
+            echo "shexli: install failed (offline, or no Python headers to build with -- python3-devel on Fedora?)" >&2
             printf '%s\n' "$out" >&2
             # A half-built venv would be reused and fail confusingly next time.
             rm -rf "$VENV"
